@@ -29,7 +29,8 @@ Most molecular visualisation tools require manual setup: loading files into a GU
 - **Electron density surfaces** — depth-graded translucent isosurfaces from density cube files; contour and dot styles available
 - **Electrostatic potential (ESP)** — ESP colormapped onto the density surface from paired cube files
 - **vdW surface overlays** — van der Waals spheres on all or selected atoms
-- **Structural overlay** — RMSD-align two conformers and render in contrasting colours
+- **Structural overlay** — RMSD-align two structures and render in contrasting colours; works across molecules with different substituents or atom counts via automatic scaffold detection
+- **Orientation reference** — `--ref` saves an orientation and reuses it across a series of derivatives with different substitution patterns, giving consistent figure panels
 - **Conformer ensemble** — overlay all frames from a multi-frame XYZ trajectory, with palette colouring and opacity control
 - **Convex hull** — semi-transparent facets over selected atoms (e.g. aromatic ring carbons, coordination spheres); optional hull-edge lines
 - **Depth fog and gradients** — 3D depth cues without needing a 3D viewer
@@ -157,9 +158,13 @@ For the full Python API (render options, `build_config()`, `measure()`, `load()`
 
 ### Structural overlay & ensemble
 
-| Overlay | Custom colour | Ensemble (CPK) | Ensemble (spectral) |
-|---------|---------------|----------------|---------------------|
-| ![overlay](examples/images/isothio_overlay.svg) | ![overlay custom](examples/images/isothio_overlay_custom.svg) | ![ensemble](examples/images/triphenylbenzol_ensemble.svg) | ![ensemble custom](examples/images/triphenylbenzol_ensemble_custom.svg) |
+| Overlay | Custom colour | Cross-molecule |
+|---------|---------------|----------------|
+| ![overlay](examples/images/isothio_overlay.svg) | ![overlay custom](examples/images/isothio_overlay_custom.svg) | ![cross-molecule overlay](examples/images/isothio_overlay_cross.svg) |
+
+| Ensemble (CPK) | Ensemble (spectral) |
+|----------------|---------------------|
+| ![ensemble](examples/images/triphenylbenzol_ensemble.svg) | ![ensemble custom](examples/images/triphenylbenzol_ensemble_custom.svg) |
 
 ### Transition states & NCI
 
