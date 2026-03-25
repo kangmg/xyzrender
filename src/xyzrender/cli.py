@@ -90,6 +90,14 @@ def main() -> None:
         default=False,
         help="Ignore file connectivity and re-detect bonds with xyzgraph",
     )
+    io_g.add_argument(
+        "--threshold",
+        type=float,
+        default=1.0,
+        metavar="SCALE",
+        help="Global bond-distance scaling factor (default: 1.0). "
+        "Values > 1.0 detect longer bonds, < 1.0 detect fewer.",
+    )
 
     # --- Styling ---
     style_g = p.add_argument_group("styling")
@@ -726,13 +734,22 @@ def main() -> None:
         )
 
     if args.smi:
-        mol = load(args.smi, smiles=True, charge=args.charge, multiplicity=args.multiplicity, kekule=args.kekule)
+        mol = load(
+            args.smi,
+            smiles=True,
+            charge=args.charge,
+            multiplicity=args.multiplicity,
+            kekule=args.kekule,
+            threshold=args.threshold,
+        )
         xyz_path = Path(args.output).with_suffix(".xyz")
         mol.to_xyz(xyz_path, title=args.smi)
         logger.info("3D geometry written to %s", xyz_path)
     elif from_stdin:
-        graph = load_stdin(charge=args.charge, multiplicity=args.multiplicity, kekule=args.kekule)
-        mol = Molecule(graph=graph, cube_data=None, cell_data=None, oriented=False)
+        graph = load_stdin(
+            charge=args.charge, multiplicity=args.multiplicity, kekule=args.kekule, threshold=args.threshold
+        )
+        mol = Molecule(graph=graph, cube_data=None, cell_data=None, oriented=False, threshold=args.threshold)
     elif not args.input:
         p.error("No input file and stdin is a terminal")
     else:
@@ -750,6 +767,7 @@ def main() -> None:
                 crystal=interface_mode or False,
                 cell=args.cell,
                 quick=args.bo is False,
+                threshold=args.threshold,
             )
         except ValueError as e:
             p.error(str(e))
@@ -875,6 +893,7 @@ def main() -> None:
             multiplicity=args.multiplicity,
             kekule=args.kekule,
             reference_mol=mol,
+            threshold=args.threshold,
         )
 
     # --- Crystal ghost resolution ---

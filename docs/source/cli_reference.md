@@ -10,6 +10,7 @@ Full flag reference for `xyzrender`. See also `xyzrender --help`.
 | `--smi SMILES` | Embed a SMILES string into 3D (requires rdkit) |
 | `--mol-frame N` | Record index in multi-molecule SDF (default: 0) |
 | `--rebuild` | Ignore file connectivity; re-detect bonds with xyzgraph |
+| `--threshold SCALE` | Global bond-distance scaling factor (default: 1.0). Values > 1.0 detect longer bonds, < 1.0 detect fewer |
 | `-c`, `--charge` | Molecular charge |
 | `-m`, `--multiplicity` | Spin multiplicity |
 | `--config` | Config preset (`default`, `flat`, `paton`, `skeletal`) or path to JSON file |
