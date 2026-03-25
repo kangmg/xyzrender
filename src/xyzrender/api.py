@@ -1892,16 +1892,42 @@ def _apply_ref_orientation(rmol: Molecule, ref_path: Path, cfg: "RenderConfig") 
     ref_nodes = [n for n in ref_mol.graph.nodes() if ref_mol.graph.nodes[n]["symbol"] != "*"]
     mol_nodes = [n for n in rmol.graph.nodes() if rmol.graph.nodes[n]["symbol"] != "*"]
 
-    if len(ref_nodes) != len(mol_nodes):
-        msg = f"--ref: atom count mismatch (reference {len(ref_nodes)}, molecule {len(mol_nodes)})"
-        raise ValueError(msg)
-
     ref_pos = np.array([ref_mol.graph.nodes[n]["position"] for n in ref_nodes], dtype=float)
     mol_pos = np.array([rmol.graph.nodes[n]["position"] for n in mol_nodes], dtype=float)
 
     from xyzrender.utils import kabsch_align
 
-    aligned = kabsch_align(ref_pos, mol_pos)
+    # Fast path: same atom count and element sequence
+    if len(ref_nodes) == len(mol_nodes) and all(
+        ref_mol.graph.nodes[r]["symbol"] == rmol.graph.nodes[m]["symbol"]
+        for r, m in zip(ref_nodes, mol_nodes, strict=True)
+    ):
+        aligned = kabsch_align(ref_pos, mol_pos)
+    else:
+        # Different molecules — MCS alignment
+        from xyzrender.mcs import find_mcs_mapping
+        from xyzrender.utils import mcs_kabsch_align
+
+        mapping = find_mcs_mapping(ref_mol.graph, rmol.graph)
+        if mapping is None:
+            msg = (
+                f"--ref: no common substructure (>= 3 atoms) between "
+                f"reference ({len(ref_nodes)} atoms) and molecule ({len(mol_nodes)} atoms)"
+            )
+            raise ValueError(msg)
+        g1_ids, g2_ids = mapping
+        matched_frac = len(g1_ids) / min(len(ref_nodes), len(mol_nodes))
+        if matched_frac < 0.25:
+            logger.warning(
+                "--ref: only %d/%d atoms matched (%.0f%%) — alignment may be poor",
+                len(g1_ids),
+                min(len(ref_nodes), len(mol_nodes)),
+                matched_frac * 100,
+            )
+        g1_idx = [ref_nodes.index(n) for n in g1_ids]
+        g2_idx = [mol_nodes.index(n) for n in g2_ids]
+        aligned = mcs_kabsch_align(ref_pos, mol_pos, g1_idx, g2_idx)
+
     for k, nid in enumerate(mol_nodes):
         rmol.graph.nodes[nid]["position"] = tuple(float(v) for v in aligned[k])
 

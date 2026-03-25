@@ -62,6 +62,20 @@ mol2 = load("lumo.cube")
 render(mol2, mo=True, ref="reference.xyz")   # load, same orientation
 ```
 
+### Consistent orientation across a chemical series
+
+`--ref` works across related compounds with different substituents, atom counts, or conformations. The shared scaffold is detected automatically — molecules are aligned on their largest common connected substructure. This gives consistent orientations across a series of derivatives, useful for comparing substituent effects or building figure panels:
+
+```bash
+# Orient the first compound interactively and save the reference
+xyzrender catalyst_a.xyz -I --ref series.xyz
+
+# All derivatives align to the same scaffold, regardless of substitution
+xyzrender catalyst_b.xyz --ref series.xyz   # different R-group
+xyzrender catalyst_c.xyz --ref series.xyz   # different atom count
+xyzrender catalyst_d.xyz --ref series.xyz   # different heterocycle
+```
+
 ```{note}
 `--ref` is not supported for periodic structures (inputs loaded with `cell=True` or crystal formats). Use `-I` for interactive orientation of crystals.
 ```
