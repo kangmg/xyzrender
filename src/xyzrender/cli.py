@@ -183,6 +183,13 @@ def main() -> None:
     surf_g.add_argument("--mo-upsample", type=int, default=None, help="MO upsample factor (default: 3)")
     surf_g.add_argument("--opacity", type=float, default=None, help="Surface opacity (default: 1.0, >1 boosts)")
     surf_g.add_argument(
+        "--surface-style",
+        choices=["solid", "mesh", "contour", "dot"],
+        default=None,
+        dest="surface_style",
+        help="Surface rendering style: solid (default), mesh (wireframe grid), wire (outline only)",
+    )
+    surf_g.add_argument(
         "--hull",
         nargs="*",
         default=None,
@@ -914,6 +921,7 @@ def main() -> None:
             flat_mo=args.flat_mo,
             dens_color=args.dens_color,
             nci_mode=args.nci_mode,
+            surface_style=args.surface_style,
             opacity=args.opacity,
             overlay=args.overlay,
             overlay_color=args.overlay_color,
@@ -981,6 +989,7 @@ def main() -> None:
                 mo_upsample=args.mo_upsample,
                 flat_mo=args.flat_mo,
                 dens_color=args.dens_color,
+                surface_style=args.surface_style,
                 no_cell=args.no_cell,
                 axes=args.axes,
                 axis=args.axis,

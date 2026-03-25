@@ -492,6 +492,7 @@ def render(
     dens_color: str | None = None,
     nci_mode: str | None = None,
     nci_cutoff: float | None = None,
+    surface_style: str | None = None,
     # --- Convex hull ---
     hull: bool | str | list[int] | list[list[int]] | None = None,
     hull_color: str | list[str] | None = None,
@@ -726,6 +727,10 @@ def render(
 
     apply_hull_to_config(cfg, hull, hull_color, hull_opacity, hull_edge, hull_edge_width_ratio, mol.graph)
 
+    # --- Surface style ---
+    if surface_style is not None:
+        cfg.surface_style = surface_style
+
     # --- Never mutate mol — work on a render-time copy ---
     # resolve_orientation() (called by every compute_*_surface) writes PCA-rotated
     # positions back into the graph in-place and add_crystal_images() appends ghost
@@ -938,6 +943,8 @@ def render(
         compute_dens_surface(rmol.graph, cube_data, cfg, dens_params)
 
     if esp_params is not None and esp is not None and cube_data is not None:
+        if cfg.surface_style != "solid":
+            logger.info("ESP uses raster rendering; --surface-style %s is ignored", cfg.surface_style)
         esp_cube = parse_cube(str(esp))
         compute_esp_surface(rmol.graph, cube_data, esp_cube, cfg, esp_params)
 
@@ -1038,6 +1045,7 @@ def render_gif(
     mo_upsample: int | None = None,
     flat_mo: bool = False,
     dens_color: str | None = None,
+    surface_style: str | None = None,
     # --- Convex hull (gif_rot only) ---
     hull: bool | str | list[int] | list[list[int]] | None = None,
     hull_color: str | list[str] | None = None,
@@ -1209,6 +1217,10 @@ def render_gif(
     from xyzrender.hull import apply_hull_to_config
 
     apply_hull_to_config(cfg, hull, hull_color, hull_opacity, hull_edge, hull_edge_width_ratio, _gif_graph)
+
+    # --- Surface style ---
+    if surface_style is not None:
+        cfg.surface_style = surface_style
 
     # Surface / hull mutual exclusivity (also catches hull set on pre-built config)
     if cfg.show_convex_hull and (mo or dens):
