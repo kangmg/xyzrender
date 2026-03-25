@@ -103,12 +103,25 @@ def test_ref_round_trip_with_surfaces(caffeine_cube, tmp_path):
     assert svg2.startswith("<svg")
 
 
-def test_ref_atom_count_mismatch_raises(caffeine, ethanol, tmp_path):
-    """Different atom count → ValueError."""
+def test_ref_mcs_fallback(tmp_path):
+    """Save ref from benzene, load for anthracene → MCS alignment, valid SVG."""
+    benzene = load(STRUCTURES / "benzene.xyz")
+    anthracene = load(STRUCTURES / "anthracene.xyz")
+    ref_path = tmp_path / "ref.xyz"
+    render(benzene, ref=ref_path, orient=True)
+    svg = str(render(anthracene, ref=ref_path))
+    assert svg.startswith("<svg")
+
+
+def test_ref_very_different_molecules(caffeine, ethanol, tmp_path):
+    """Very different molecules: either MCS works (small match) or raises."""
     ref_path = tmp_path / "ref.xyz"
     render(caffeine, ref=ref_path, orient=False)
-    with pytest.raises(ValueError, match="atom count mismatch"):
-        render(ethanol, ref=ref_path)
+    try:
+        svg = str(render(ethanol, ref=ref_path))
+        assert svg.startswith("<svg")
+    except ValueError:
+        pass  # acceptable if no common substructure found
 
 
 def test_ref_idempotent(caffeine, tmp_path):
