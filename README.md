@@ -190,7 +190,7 @@ For the full Python API (render options, `build_config()`, `measure()`, `load()`
 
 ### Stereochemistry labels
 
-| Isothiocyanate (R/S, E/Z, planar)                      | TS with stereo (Mn-H₂, `--ts --stereo`)                    |
+| Isothiourea (R/S, E/Z, planar)                      | TS with stereo (Mn-H₂, `--ts --stereo`)                    |
 | ------------------------------------------------------- | ----------------------------------------------------------- |
 | ![isothio stereo](examples/images/isothio_stereo.svg)   | ![mn-h2 ts stereo](examples/images/mn-h2_ts_stereo.svg)    |
 
