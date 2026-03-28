@@ -32,11 +32,10 @@ homepage = "https://github.com/aligfellow/xyzrender"
 xyzrender = "xyzrender.cli:main"
 
 [project.optional-dependencies]
-hull    = ["scipy>=1.10"]
 smi     = ["rdkit"]
 cif     = ["ase"]
 v       = ["vmol>=3.0rc7"]
-all     = ["rdkit", "ase", "scipy>=1.10", "vmol>=3.0rc7"]
+all     = ["rdkit", "ase", "vmol>=3.0rc7"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -54,7 +53,6 @@ dev = [
     "ase",      # optional dep (needed for test_formats.py pdb fixtures)
     "rdkit",    # optional dep (needed for test_formats.py mol/sdf fixtures)
     "vmol>=3.0rc7",
-    "scipy",
 ]
 
 # ===== Ruff =====

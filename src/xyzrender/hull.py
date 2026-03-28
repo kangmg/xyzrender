@@ -8,36 +8,194 @@ for correct occlusion.
 
 Hull edges (the 1-skeleton of the convex hull) that do not coincide with a
 molecular bond can be drawn as thin lines; toggle with ``hull_edge=False``.
-
-Requires ``scipy``: ``pip install scipy`` or ``pip install 'xyzrender[hull]'``.
 """
 
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
 if TYPE_CHECKING:
     import networkx as nx
-    from scipy.spatial import ConvexHull
 
     from xyzrender.types import RenderConfig
 
 logger = logging.getLogger(__name__)
 
 
-def _convex_hull(points: np.ndarray, *, qhull_options: str | None = None) -> ConvexHull:
-    """Lazy-import scipy and build a ConvexHull, raising a clear error if missing."""
-    try:
-        from scipy.spatial import ConvexHull
-    except ImportError:
-        msg = "scipy is required for convex hull rendering — pip install scipy  or  pip install 'xyzrender[hull]'"
-        raise ImportError(msg) from None
-    if qhull_options is not None:
-        return ConvexHull(points, qhull_options=qhull_options)
-    return ConvexHull(points)
+# ---------------------------------------------------------------------------
+# Pure-numpy convex hull algorithms
+# ---------------------------------------------------------------------------
+
+
+def _convex_hull_2d(points: np.ndarray) -> np.ndarray:
+    """Compute 2D convex hull via Andrew's monotone chain.
+
+    Parameters
+    ----------
+    points :
+        Shape (N, 2) array of 2D points.  N >= 2.
+
+    Returns
+    -------
+    np.ndarray
+        1-D array of vertex indices into *points* in counter-clockwise order,
+        Ordered boundary vertex indices in counter-clockwise order.
+    """
+    n = points.shape[0]
+    if n <= 1:
+        return np.arange(n, dtype=np.intp)
+
+    # Lexicographic sort by (x, y) — np.lexsort sorts by last key first.
+    order = np.lexsort((points[:, 1], points[:, 0]))
+    pts = points[order]
+
+    # Build lower and upper hulls.
+    def _half_hull(seq: np.ndarray) -> list[int]:
+        hull: list[int] = []
+        for i in seq:
+            while len(hull) >= 2:
+                o, a, b = pts[hull[-2]], pts[hull[-1]], pts[i]
+                # Cross product (a-o) x (b-o); remove if non-left turn.
+                if (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]) <= 0:
+                    hull.pop()
+                else:
+                    break
+            hull.append(int(i))
+        return hull
+
+    lower = _half_hull(np.arange(n))
+    upper = _half_hull(np.arange(n - 1, -1, -1))
+
+    # Concatenate, removing duplicate join points.
+    hull_local = lower[:-1] + upper[:-1]
+    return order[hull_local]
+
+
+def _convex_hull_3d(points: np.ndarray) -> np.ndarray:
+    """Return (F, 3) simplices for the 3D convex hull of *points* (N, 3)."""
+    n = points.shape[0]
+    _empty = np.empty((0, 3), dtype=np.intp)
+
+    # --- Special case: exactly 3 points → single triangle -----------------
+    if n == 3:
+        return np.array([[0, 1, 2]], dtype=np.intp)
+
+    # --- Dimensionality check: coplanar shortcut --------------------------
+    centered = points - points.mean(axis=0)
+    rank = np.linalg.matrix_rank(centered, tol=0.1)
+    if rank < 3:
+        return _coplanar_hull(points)
+
+    # --- Full 3D incremental hull -----------------------------------------
+    return _incremental_3d(points, _empty)
+
+
+def _coplanar_hull(points: np.ndarray) -> np.ndarray:
+    """Triangulate coplanar points: project to best-fit plane, 2D hull, fan."""
+    centered = points - points.mean(axis=0)
+    _, _, vt = np.linalg.svd(centered, full_matrices=False)
+    # Project onto the two principal axes (rows 0 and 1 of vt).
+    proj = centered @ vt[:2].T  # (N, 2)
+    hull_idx = _convex_hull_2d(proj)
+    if len(hull_idx) < 3:
+        return np.empty((0, 3), dtype=np.intp)
+    # Fan triangulation from hull_idx[0].
+    fan = np.column_stack(
+        [
+            np.full(len(hull_idx) - 2, hull_idx[0], dtype=np.intp),
+            hull_idx[1:-1],
+            hull_idx[2:],
+        ]
+    )
+    return fan
+
+
+def _incremental_3d(points: np.ndarray, _empty: np.ndarray) -> np.ndarray:
+    """Core incremental 3D convex hull algorithm."""
+    n = points.shape[0]
+
+    # --- Initial tetrahedron: 4 well-separated non-coplanar points --------
+    p0 = 0
+    dists = np.linalg.norm(points - points[p0], axis=1)
+    p1 = int(np.argmax(dists))
+    if dists[p1] < 1e-12:
+        return _empty
+
+    edge_dir = points[p1] - points[p0]
+    edge_dir /= np.linalg.norm(edge_dir)
+    vecs = points - points[p0]
+    perp = vecs - np.outer(vecs @ edge_dir, edge_dir)
+    p2 = int(np.argmax(np.linalg.norm(perp, axis=1)))
+    if np.linalg.norm(perp[p2]) < 1e-12:
+        return _empty
+
+    normal = np.cross(points[p1] - points[p0], points[p2] - points[p0])
+    normal /= np.linalg.norm(normal)
+    p3 = int(np.argmax(np.abs(vecs @ normal)))
+    if abs(vecs[p3] @ normal) < 1e-12:
+        return _empty
+
+    tet = [p0, p1, p2, p3]
+    centroid = points[tet].mean(axis=0)
+
+    # 4 faces, oriented so normals point away from centroid.
+    faces: list[list[int]] = [
+        [tet[0], tet[1], tet[2]],
+        [tet[0], tet[1], tet[3]],
+        [tet[0], tet[2], tet[3]],
+        [tet[1], tet[2], tet[3]],
+    ]
+    for f in faces:
+        fn = np.cross(points[f[1]] - points[f[0]], points[f[2]] - points[f[0]])
+        if fn @ (points[f[0]] - centroid) < 0:
+            f[1], f[2] = f[2], f[1]
+
+    live = set(range(4))
+    in_hull = set(tet)
+
+    # --- Add remaining points one at a time -------------------------------
+    for pi in range(n):
+        if pi in in_hull:
+            continue
+        pt = points[pi]
+
+        # Vectorized visibility test.
+        live_list = sorted(live)
+        face_arr = np.array([faces[fi] for fi in live_list], dtype=np.intp)
+        v0 = points[face_arr[:, 0]]
+        normals = np.cross(points[face_arr[:, 1]] - v0, points[face_arr[:, 2]] - v0)
+        dots = np.einsum("ij,ij->i", normals, pt - v0)
+        visible = {live_list[i] for i in np.flatnonzero(dots > 1e-15)}
+        if not visible:
+            continue
+
+        # Horizon = edges of visible faces that appear exactly once.
+        edge_counts: Counter[tuple[int, int]] = Counter()
+        for fi in visible:
+            f = faces[fi]
+            for k in range(3):
+                a, b = f[k], f[(k + 1) % 3]
+                edge_counts[(min(a, b), max(a, b))] += 1
+        horizon = [e for e, c in edge_counts.items() if c == 1]
+
+        # Remove visible faces, add new faces from pi to horizon edges.
+        live -= visible
+        for ea, eb in horizon:
+            new_face = [pi, ea, eb]
+            fn = np.cross(points[ea] - points[pi], points[eb] - points[pi])
+            if fn @ (points[pi] - centroid) < 0:
+                new_face = [pi, eb, ea]
+            live.add(len(faces))
+            faces.append(new_face)
+        in_hull.add(pi)
+
+    if not live:
+        return _empty
+    return np.array([faces[fi] for fi in sorted(live)], dtype=np.intp)
 
 
 def hull_indices_to_0indexed(
@@ -89,28 +247,22 @@ def get_convex_hull_facets(
     list of (face_vertices_3d, centroid_z)
         Each facet is a triangle: face_vertices_3d has shape (3, 3).
         centroid_z is the z-coordinate of the facet centroid for back-to-front sorting.
-        Empty list if fewer than 4 points (no 3D hull).
+        Empty list if fewer than 3 points.
     """
     if include_mask is not None:
         points = pos_3d[np.asarray(include_mask, dtype=bool)]
     else:
         points = np.asarray(pos_3d, dtype=float)
 
-    if points.shape[0] < 4:
+    if points.shape[0] < 3:
         return []
 
-    try:
-        hull = _convex_hull(points)
-    except Exception:
-        # Coplanar or degenerate points (e.g. ring atoms); try QJ to joggle into 3D
-        try:
-            hull = _convex_hull(points, qhull_options="QJ")
-        except Exception:
-            return []
+    simplices = _convex_hull_3d(points)
+    if simplices.shape[0] == 0:
+        return []
 
     out: list[tuple[np.ndarray, float]] = []
-    for simplex in hull.simplices:
-        # simplex: indices (3,) into points
+    for simplex in simplices:
         face = points[simplex]  # (3, 3)
         centroid_z = float(face[:, 2].mean())
         out.append((face, centroid_z))
@@ -140,7 +292,7 @@ def get_convex_hull_edges(
     -------
     list of (node_i, node_j)
         Unique edges with node_i < node_j, in graph (full) index space.
-        Empty list if fewer than 4 points or hull construction fails.
+        Empty list if fewer than 3 points or hull construction fails.
     """
     if include_mask is not None:
         points = pos_3d[np.asarray(include_mask, dtype=bool)]
@@ -149,29 +301,23 @@ def get_convex_hull_edges(
         points = np.asarray(pos_3d, dtype=float)
         graph_indices = np.arange(pos_3d.shape[0], dtype=np.intp)
 
-    if points.shape[0] < 4:
+    if points.shape[0] < 3:
         return []
 
-    try:
-        hull = _convex_hull(points)
-    except Exception:
-        try:
-            hull = _convex_hull(points, qhull_options="QJ")
-        except Exception:
-            return []
+    simplices = _convex_hull_3d(points)
+    if simplices.shape[0] == 0:
+        return []
 
-    seen: set[frozenset[int]] = set()
+    seen: set[tuple[int, int]] = set()
     out: list[tuple[int, int]] = []
-    for simplex in hull.simplices:
-        # simplex: 3 vertex indices into points
+    for simplex in simplices:
         for i in range(3):
-            a, b = simplex[i], simplex[(i + 1) % 3]
+            a, b = int(simplex[i]), int(simplex[(i + 1) % 3])
             if a > b:
                 a, b = b, a
-            key = frozenset((a, b))
-            if key in seen:
+            if (a, b) in seen:
                 continue
-            seen.add(key)
+            seen.add((a, b))
             ni, nj = int(graph_indices[a]), int(graph_indices[b])
             if ni > nj:
                 ni, nj = nj, ni
@@ -213,13 +359,10 @@ def get_convex_hull_edges_silhouette(
         return []
 
     points_2d = points[:, :2]
-    try:
-        hull_2d = _convex_hull(points_2d)
-    except Exception:
+    verts = _convex_hull_2d(points_2d)
+    if len(verts) < 2:
         return []
 
-    # hull_2d.vertices: indices of boundary points in counterclockwise order
-    verts = hull_2d.vertices
     out: list[tuple[int, int]] = []
     for k in range(len(verts)):
         a, b = verts[k], verts[(k + 1) % len(verts)]

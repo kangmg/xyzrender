@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from xyzrender.hull import get_convex_hull_edges, get_convex_hull_facets, hull_facets_svg, normalize_hull_subsets
+from xyzrender.hull import (
+    _convex_hull_2d,
+    _convex_hull_3d,
+    get_convex_hull_edges,
+    get_convex_hull_facets,
+    hull_facets_svg,
+    normalize_hull_subsets,
+)
 from xyzrender.renderer import render_svg
 from xyzrender.types import RenderConfig
 
@@ -29,10 +36,12 @@ def test_get_convex_hull_facets_tetrahedron():
         assert isinstance(centroid_z, float)
 
 
-def test_get_convex_hull_facets_fewer_than_four_points():
-    """Fewer than 4 points return empty list."""
+def test_get_convex_hull_facets_fewer_than_three_points():
+    """Fewer than 3 points return empty list; exactly 3 returns one triangle."""
     assert get_convex_hull_facets(np.array([[0, 0, 0], [1, 0, 0]])) == []
-    assert get_convex_hull_facets(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])) == []
+    facets = get_convex_hull_facets(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]]))
+    assert len(facets) == 1
+    assert facets[0][0].shape == (3, 3)
 
 
 def test_get_convex_hull_edges_tetrahedron():
@@ -55,10 +64,11 @@ def test_get_convex_hull_edges_tetrahedron():
     assert len(set(edges)) == 6
 
 
-def test_get_convex_hull_edges_fewer_than_four_points():
-    """Fewer than 4 points return empty list."""
+def test_get_convex_hull_edges_fewer_than_three_points():
+    """Fewer than 3 points return empty list; exactly 3 returns 3 edges."""
     assert get_convex_hull_edges(np.array([[0, 0, 0], [1, 0, 0]])) == []
-    assert get_convex_hull_edges(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])) == []
+    edges = get_convex_hull_edges(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]]))
+    assert len(edges) == 3
 
 
 def test_get_convex_hull_edges_with_include_mask():
@@ -104,9 +114,10 @@ def test_get_convex_hull_facets_with_include_mask():
     # All 5 points -> hull has more simplices (e.g. 4 for this configuration)
     facets_all = get_convex_hull_facets(pos)
     assert len(facets_all) >= 4
-    # Mask with only 3 points -> empty
+    # Mask with only 3 points -> single triangle facet
     mask3 = np.array([True, True, True, False, False])
-    assert get_convex_hull_facets(pos, include_mask=mask3) == []
+    facets3 = get_convex_hull_facets(pos, include_mask=mask3)
+    assert len(facets3) == 1
 
 
 def test_hull_facets_svg_produces_polygons():
@@ -341,3 +352,52 @@ def test_normalize_hull_subsets():
     assert normalize_hull_subsets([]) == []
     assert normalize_hull_subsets([0, 1, 2]) == [[0, 1, 2]]
     assert normalize_hull_subsets([[0, 1], [2, 3]]) == [[0, 1], [2, 3]]
+
+
+# ---------------------------------------------------------------------------
+# Algorithm-level tests for numpy convex hull internals
+# ---------------------------------------------------------------------------
+
+
+def test_convex_hull_2d_square():
+    """4 corners of a square yield 4 boundary vertices."""
+    pts = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=float)
+    verts = _convex_hull_2d(pts)
+    assert len(verts) == 4
+    assert set(verts) == {0, 1, 2, 3}
+
+
+def test_convex_hull_2d_with_interior():
+    """Interior point is excluded from the hull."""
+    pts = np.array([[0, 0], [2, 0], [2, 2], [0, 2], [1, 1]], dtype=float)
+    verts = _convex_hull_2d(pts)
+    assert len(verts) == 4
+    assert 4 not in verts
+
+
+def test_convex_hull_3d_cube():
+    """8 corners of a cube yield 12 triangular facets (6 faces x 2 triangles)."""
+    pts = np.array(
+        [[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)],
+        dtype=float,
+    )
+    simplices = _convex_hull_3d(pts)
+    assert simplices.shape[1] == 3
+    assert simplices.shape[0] == 12
+
+
+def test_convex_hull_3d_coplanar_hexagon():
+    """6 coplanar points (benzene-like hexagon) produce facets via fan triangulation."""
+    angles = np.linspace(0, 2 * np.pi, 6, endpoint=False)
+    pts = np.column_stack([np.cos(angles), np.sin(angles), np.zeros(6)])
+    simplices = _convex_hull_3d(pts)
+    # Fan triangulation of a hexagon: 4 triangles
+    assert simplices.shape[0] == 4
+    assert simplices.shape[1] == 3
+
+
+def test_convex_hull_3d_three_points():
+    """3 points yield a single triangular facet."""
+    pts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    simplices = _convex_hull_3d(pts)
+    assert simplices.shape == (1, 3)
