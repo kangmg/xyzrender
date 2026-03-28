@@ -22,21 +22,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from xyzrender.contours import (
-    MIN_LOOP_PERIMETER,
     UPSAMPLE_FACTOR,
     Lobe3D,
     LobeContour2D,
-    chain_segments,
     combined_path_d,
     compute_grid_positions,
     cube_corners_ang,
-    extract_mesh_geometry,
     gaussian_blur_2d,
-    loop_perimeter,
-    marching_squares,
+    project_region_to_contours,
     render_lobe_svg,
-    resample_loop,
-    upsample_2d,
 )
 from xyzrender.esp import _build_lut
 
@@ -257,8 +251,6 @@ def _project_nci_region_2d(
     Uses binary membership projection (1.0 for member voxels) then
     Gaussian blur + upsampling + marching squares at 0.5.
     """
-    z_depth = float(lobe_pos[:, 2].mean())
-
     lx, ly = lobe_pos[:, 0], lobe_pos[:, 1]
     xi = np.clip(((lx - x_min) / (x_max - x_min) * (resolution - 1)).astype(int), 0, resolution - 1)
     yi = np.clip(((ly - y_min) / (y_max - y_min) * (resolution - 1)).astype(int), 0, resolution - 1)
@@ -267,62 +259,29 @@ def _project_nci_region_2d(
     grid_2d = np.zeros((resolution, resolution))
     grid_2d[yi, xi] = 1.0
 
-    nz_rows, nz_cols = np.nonzero(grid_2d)
-    if len(nz_rows) == 0:
-        return None
-
-    pad = max(3, int(_NCI_BLUR_SIGMA * 4) + 1)
-    r0 = max(0, int(nz_rows.min()) - pad)
-    r1 = min(resolution, int(nz_rows.max()) + pad + 1)
-    c0 = max(0, int(nz_cols.min()) - pad)
-    c1 = min(resolution, int(nz_cols.max()) + pad + 1)
-    cropped = grid_2d[r0:r1, c0:c1]
-
     # Dilation before blur: fills single-pixel gaps so the Gaussian blur reaches
-    # the 0.5 threshold.  Two conditions trigger it:
-    #   - very few projected pixels: small or near-invisible patch needs dilation
-    #     to produce any closed contour at all
-    #   - low fill fraction (n_unique / bbox area): catches thin patches of any
-    #     orientation — including diagonal pi-pi stacking viewed at an angle,
-    #     which has large row_span AND col_span but few pixels relative to bbox.
-    #     A solid face-on patch fills ~π/4 ≈ 0.78 of its bbox; 0.4 is a safe
-    #     threshold below that.
-    n_unique = len(nz_rows)
-    row_span = int(nz_rows.max()) - int(nz_rows.min()) + 1
-    col_span = int(nz_cols.max()) - int(nz_cols.min()) + 1
-    fill_fraction = n_unique / max(1, row_span * col_span)
-    to_blur = (
-        _dilate_binary_2d(cropped)
-        if (n_unique < _MIN_PIXELS_FOR_BLUR or fill_fraction < _FILL_FRACTION_THRESHOLD)
-        else cropped
+    # the 0.5 threshold.  Triggered for sparse or thin projections.
+    nz_rows, nz_cols = np.nonzero(grid_2d)
+    if len(nz_rows) > 0:
+        n_unique = len(nz_rows)
+        row_span = int(nz_rows.max()) - int(nz_rows.min()) + 1
+        col_span = int(nz_cols.max()) - int(nz_cols.min()) + 1
+        fill_fraction = n_unique / max(1, row_span * col_span)
+        if n_unique < _MIN_PIXELS_FOR_BLUR or fill_fraction < _FILL_FRACTION_THRESHOLD:
+            grid_2d = _dilate_binary_2d(grid_2d)
+
+    return project_region_to_contours(
+        grid_2d,
+        resolution,
+        lobe_pos,
+        "pos",
+        _MEMBERSHIP_THRESHOLD,
+        blur_sigma=_NCI_BLUR_SIGMA,
+        upsample_factor=UPSAMPLE_FACTOR,
+        surface_style=surface_style,
+        n_mesh_iso=6 if surface_style == "dot" else 3,
+        n_mesh_lines=8,
     )
-    blurred = np.maximum(gaussian_blur_2d(to_blur, _NCI_BLUR_SIGMA), 0.0)
-    upsampled = upsample_2d(blurred, UPSAMPLE_FACTOR)
-
-    raw_loops = chain_segments(marching_squares(upsampled, _MEMBERSHIP_THRESHOLD))
-    offset = np.array([r0 * UPSAMPLE_FACTOR, c0 * UPSAMPLE_FACTOR])
-    offset_loops = [loop + offset for loop in raw_loops]
-    loops = [resample_loop(lp) for lp in offset_loops if loop_perimeter(lp) >= MIN_LOOP_PERIMETER]
-
-    if not loops:
-        return None
-
-    cent_3d = (float(lobe_pos[:, 0].mean()), float(lobe_pos[:, 1].mean()), z_depth)
-    lc = LobeContour2D(loops=loops, phase="pos", z_depth=z_depth, centroid_3d=cent_3d)
-
-    if surface_style in ("mesh", "contour", "dot"):
-        _n_iso = 6 if surface_style == "dot" else 3
-        iso_loops, grid_lines = extract_mesh_geometry(
-            upsampled,
-            _MEMBERSHIP_THRESHOLD,
-            offset,
-            n_iso_levels=_n_iso,
-            n_lines=8,
-        )
-        lc.mesh_iso_loops = iso_loops
-        lc.mesh_grid_lines = grid_lines
-
-    return lc
 
 
 # ---------------------------------------------------------------------------
@@ -771,56 +730,5 @@ def nci_loops_svg(
                 lines.append(
                     f'  <path d="{d}" fill="{color}" fill-rule="evenodd" stroke="none" opacity="{opacity:.3f}"/>'
                 )
-
-    return lines
-
-
-def nci_static_svg(
-    nci: NCIContours,
-    surface_opacity: float,
-    scale: float,
-    cx: float,
-    cy: float,
-    canvas_w: int,
-    canvas_h: int,
-) -> list[str]:
-    """Render the per-pixel colored NCI raster clipped to each lobe's loop shape.
-
-    The sign(l2)*rho heatmap is defined once as a ``<image>``; each lobe's
-    marching-squares outline is used as a ``<clipPath>`` so the raster is
-    only visible inside the actual NCI isosurface patches.  This mirrors the
-    ESP surface rendering approach.
-    """
-    if not nci.raster_png or not nci.lobes:
-        return []
-
-    img_x = canvas_w / 2 + scale * (nci.x_min - cx)
-    img_y = canvas_h / 2 - scale * (nci.y_max - cy)
-    img_w = scale * (nci.x_max - nci.x_min)
-    img_h = scale * (nci.y_max - nci.y_min)
-    opacity = surface_opacity
-
-    lines: list[str] = ["  <defs>"]
-    lines.append(
-        f'    <image id="nci_raster" x="{img_x:.1f}" y="{img_y:.1f}" '
-        f'width="{img_w:.1f}" height="{img_h:.1f}" '
-        f'href="{nci.raster_png}" '
-        f'preserveAspectRatio="none" image-rendering="optimizeQuality"/>'
-    )
-
-    clip_ids: list[str] = []
-    for i, lobe in enumerate(nci.lobes):
-        d = combined_path_d(lobe.loops, nci, scale, cx, cy, canvas_w, canvas_h)
-        if d:
-            clip_id = f"nci_clip_{i}"
-            clip_ids.append(clip_id)
-            lines.append(f'    <clipPath id="{clip_id}">')
-            lines.append(f'      <path d="{d}" fill-rule="evenodd"/>')
-            lines.append("    </clipPath>")
-
-    lines.append("  </defs>")
-
-    for clip_id in clip_ids:
-        lines.append(f'  <use href="#nci_raster" clip-path="url(#{clip_id})" opacity="{opacity:.3f}"/>')
 
     return lines
