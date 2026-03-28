@@ -2181,16 +2181,10 @@ dependencies = [
 all = [
     { name = "ase" },
     { name = "rdkit" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "vmol" },
 ]
 cif = [
     { name = "ase" },
-]
-hull = [
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 smi = [
     { name = "rdkit" },
@@ -2207,8 +2201,6 @@ dev = [
     { name = "pytest-cov" },
     { name = "rdkit" },
     { name = "ruff" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "ty" },
     { name = "vmol" },
 ]
@@ -2226,13 +2218,11 @@ requires-dist = [
     { name = "rdkit", marker = "extra == 'all'" },
     { name = "rdkit", marker = "extra == 'smi'" },
     { name = "resvg-py" },
-    { name = "scipy", marker = "extra == 'all'", specifier = ">=1.10" },
-    { name = "scipy", marker = "extra == 'hull'", specifier = ">=1.10" },
     { name = "vmol", marker = "extra == 'all'", specifier = ">=3.0rc7" },
     { name = "vmol", marker = "extra == 'v'", specifier = ">=3.0rc7" },
     { name = "xyzgraph", specifier = ">=1.6.7" },
 ]
-provides-extras = ["hull", "smi", "cif", "v", "all"]
+provides-extras = ["smi", "cif", "v", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2242,7 +2232,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "rdkit" },
     { name = "ruff", specifier = ">=0.14.14" },
-    { name = "scipy" },
     { name = "ty", specifier = ">=0.0.14" },
     { name = "vmol", specifier = ">=3.0rc7" },
 ]
