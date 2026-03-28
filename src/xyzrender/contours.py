@@ -383,16 +383,22 @@ def gaussian_blur_2d(grid: np.ndarray, sigma: float) -> np.ndarray:
 
 
 def upsample_2d(grid: np.ndarray, factor: int) -> np.ndarray:
-    """Upsample 2D array by integer factor using bilinear interpolation."""
+    """Upsample 2D array by integer factor using separable bilinear interpolation."""
     ny, nx = grid.shape
-    x_old = np.arange(nx)
+    if ny < 2 or nx < 2:
+        return np.repeat(np.repeat(grid, factor, axis=0), factor, axis=1)
+
+    # Horizontal pass: vectorised across all rows simultaneously
     x_new = np.linspace(0, nx - 1, nx * factor)
-    # Interpolate along columns first
-    temp = np.array([np.interp(x_new, x_old, grid[i]) for i in range(ny)])
-    # Then along rows
-    y_old = np.arange(ny)
+    x0 = np.clip(np.searchsorted(np.arange(nx), x_new, side="right") - 1, 0, nx - 2)
+    dx = x_new - x0
+    temp = grid[:, x0] + dx * (grid[:, x0 + 1] - grid[:, x0])
+
+    # Vertical pass: vectorised across all columns simultaneously
     y_new = np.linspace(0, ny - 1, ny * factor)
-    return np.array([np.interp(y_new, y_old, temp[:, j]) for j in range(nx * factor)]).T
+    y0 = np.clip(np.searchsorted(np.arange(ny), y_new, side="right") - 1, 0, ny - 2)
+    dy = (y_new - y0)[:, np.newaxis]
+    return temp[y0] + dy * (temp[y0 + 1] - temp[y0])
 
 
 # ---------------------------------------------------------------------------
@@ -758,6 +764,118 @@ def extract_mesh_geometry(
     grid_lines = [pts + crop_offset for pts in h_lines + v_lines]
 
     return iso_loops, grid_lines
+
+
+# ---------------------------------------------------------------------------
+# Shared 2D projection pipeline (used by MO and NCI)
+# ---------------------------------------------------------------------------
+
+
+def project_region_to_contours(
+    grid_2d: np.ndarray,
+    resolution: int,
+    lobe_pos: np.ndarray,
+    phase: str,
+    threshold: float,
+    *,
+    blur_sigma: float = BLUR_SIGMA,
+    upsample_factor: int = UPSAMPLE_FACTOR,
+    surface_style: str = "solid",
+    n_mesh_iso: int | None = None,
+    n_mesh_lines: int = _MESH_N_LINES,
+) -> LobeContour2D | None:
+    """Crop, blur, upsample, and contour a 2D projected scalar field.
+
+    Shared pipeline for MO and NCI surface modules.  The caller populates
+    *grid_2d* (value-binned for MO, binary membership for NCI) and handles
+    any pre-processing such as dilation.
+
+    Parameters
+    ----------
+    grid_2d:
+        ``(resolution, resolution)`` 2D projected scalar field.
+    resolution:
+        Grid side length.
+    lobe_pos:
+        ``(N, 3)`` transformed voxel positions in Angstrom (for z-depth
+        and centroid).
+    phase:
+        ``"pos"`` or ``"neg"`` — controls blur clamping and marching-
+        squares field negation.
+    threshold:
+        Marching-squares iso threshold.
+    blur_sigma:
+        Gaussian blur sigma in grid cells.
+    upsample_factor:
+        Integer upsampling factor before contouring.
+    surface_style:
+        ``"solid"``, ``"mesh"``, ``"contour"``, or ``"dot"``.
+    n_mesh_iso:
+        Intermediate iso-contour rings for mesh geometry (default:
+        10 for ``"dot"``, :data:`_MESH_N_ISO_LEVELS` otherwise).
+    n_mesh_lines:
+        Grid lines per direction for mesh geometry.
+
+    Returns
+    -------
+    LobeContour2D | None
+        Contour data, or ``None`` if no contours survive filtering.
+    """
+    # Crop to bounding box + blur kernel padding
+    nz_rows, nz_cols = np.nonzero(grid_2d)
+    if len(nz_rows) == 0:
+        return None
+    pad = max(3, int(blur_sigma * 4) + 1)
+    r0 = max(0, int(nz_rows.min()) - pad)
+    r1 = min(resolution, int(nz_rows.max()) + pad + 1)
+    c0 = max(0, int(nz_cols.min()) - pad)
+    c1 = min(resolution, int(nz_cols.max()) + pad + 1)
+    cropped = grid_2d[r0:r1, c0:c1]
+
+    # Blur + phase-dependent clamp
+    blurred = gaussian_blur_2d(cropped, blur_sigma)
+    if phase == "pos":
+        blurred = np.maximum(blurred, 0.0)
+    else:
+        blurred = np.minimum(blurred, 0.0)
+
+    upsampled = upsample_2d(blurred, upsample_factor)
+
+    # Marching squares (negate field for neg-phase lobes)
+    if phase == "pos":
+        raw_loops = chain_segments(marching_squares(upsampled, threshold))
+    else:
+        raw_loops = chain_segments(marching_squares(-upsampled, threshold))
+
+    # Offset contour coords back to full-grid space
+    offset = np.array([r0 * upsample_factor, c0 * upsample_factor])
+    offset_loops = [loop + offset for loop in raw_loops]
+
+    loops = [resample_loop(lp) for lp in offset_loops if loop_perimeter(lp) >= MIN_LOOP_PERIMETER]
+
+    if not loops:
+        return None
+
+    z_depth = float(lobe_pos[:, 2].mean())
+    cent_3d = (float(lobe_pos[:, 0].mean()), float(lobe_pos[:, 1].mean()), z_depth)
+    lc = LobeContour2D(loops=loops, phase=phase, z_depth=z_depth, centroid_3d=cent_3d)
+
+    # Mesh geometry
+    if surface_style in ("mesh", "contour", "dot"):
+        if n_mesh_iso is None:
+            n_mesh_iso = 10 if surface_style == "dot" else _MESH_N_ISO_LEVELS
+        iso_loops, grid_lines = extract_mesh_geometry(
+            upsampled,
+            threshold,
+            offset,
+            is_negative=(phase == "neg"),
+            n_iso_levels=n_mesh_iso,
+            n_lines=n_mesh_lines,
+        )
+        lc.mesh_iso_loops = iso_loops
+        lc.mesh_grid_lines = grid_lines
+
+    return lc
 
 
 # ---------------------------------------------------------------------------

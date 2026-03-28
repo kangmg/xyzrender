@@ -9,25 +9,17 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from xyzrender.contours import (
-    _MESH_N_ISO_LEVELS,
     BLUR_SIGMA,
     MIN_LOBE_VOLUME_BOHR3,
-    MIN_LOOP_PERIMETER,
     UPSAMPLE_FACTOR,
     Lobe3D,
     LobeContour2D,
     MOContours,
     SurfaceContours,
-    chain_segments,
     compute_grid_positions,
     cube_corners_ang,
-    extract_mesh_geometry,
-    gaussian_blur_2d,
-    loop_perimeter,
-    marching_squares,
+    project_region_to_contours,
     render_lobe_svg,
-    resample_loop,
-    upsample_2d,
 )
 
 if TYPE_CHECKING:
@@ -134,8 +126,6 @@ def _project_lobe_2d(
         if target_centroid is not None:
             lobe_pos += target_centroid
 
-    z_depth = float(lobe_pos[:, 2].mean())
-
     # Bin lobe values into a 2D grid (max-intensity for pos, min for neg)
     grid_2d = np.zeros((resolution, resolution))
     lx = lobe_pos[:, 0]
@@ -148,57 +138,16 @@ def _project_lobe_2d(
     else:
         np.minimum.at(grid_2d, (yi, xi), lobe_vals)
 
-    # Crop to lobe's bounding box + blur kernel padding
-    nz_rows, nz_cols = np.nonzero(grid_2d)
-    if len(nz_rows) == 0:
-        return None
-    pad = max(3, int(blur_sigma * 4) + 1)
-    r0 = max(0, int(nz_rows.min()) - pad)
-    r1 = min(resolution, int(nz_rows.max()) + pad + 1)
-    c0 = max(0, int(nz_cols.min()) - pad)
-    c1 = min(resolution, int(nz_cols.max()) + pad + 1)
-    cropped = grid_2d[r0:r1, c0:c1]
-
-    # Blur + upsample the cropped region only
-    blurred = gaussian_blur_2d(cropped, blur_sigma)
-    if lobe.phase == "pos":
-        blurred = np.maximum(blurred, 0.0)
-    else:
-        blurred = np.minimum(blurred, 0.0)
-
-    upsampled = upsample_2d(blurred, upsample_factor)
-
-    # Extract contours on cropped grid
-    if lobe.phase == "pos":
-        raw_loops = chain_segments(marching_squares(upsampled, isovalue))
-    else:
-        raw_loops = chain_segments(marching_squares(-upsampled, isovalue))
-
-    # Offset contour coords back to full-grid space
-    offset = np.array([r0 * upsample_factor, c0 * upsample_factor])
-    offset_loops = [loop + offset for loop in raw_loops]
-
-    loops = [resample_loop(lp) for lp in offset_loops if loop_perimeter(lp) >= MIN_LOOP_PERIMETER]
-
-    if not loops:
-        return None
-    cent_3d = (float(lobe_pos[:, 0].mean()), float(lobe_pos[:, 1].mean()), z_depth)
-    lc = LobeContour2D(loops=loops, phase=lobe.phase, z_depth=z_depth, centroid_3d=cent_3d)
-
-    # Extract mesh geometry when style is "mesh"
-    if surface_style in ("mesh", "contour", "dot"):
-        _n_iso = 10 if surface_style == "dot" else _MESH_N_ISO_LEVELS
-        iso_loops, grid_lines = extract_mesh_geometry(
-            upsampled,
-            isovalue,
-            offset,
-            is_negative=(lobe.phase == "neg"),
-            n_iso_levels=_n_iso,
-        )
-        lc.mesh_iso_loops = iso_loops
-        lc.mesh_grid_lines = grid_lines
-
-    return lc
+    return project_region_to_contours(
+        grid_2d,
+        resolution,
+        lobe_pos,
+        lobe.phase,
+        isovalue,
+        blur_sigma=blur_sigma,
+        upsample_factor=upsample_factor,
+        surface_style=surface_style,
+    )
 
 
 # ---------------------------------------------------------------------------
