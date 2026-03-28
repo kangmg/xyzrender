@@ -40,6 +40,44 @@ logger = logging.getLogger(__name__)
 __all__ = ["add_crystal_images", "build_supercell", "load_crystal"]
 
 
+def _build_threshold_matrix(syms: list[str]) -> np.ndarray:
+    """Return an (n, n) matrix of bond-distance cutoffs for a list of element symbols.
+
+    Groups atoms by unique element so the inner work is O(E²) where E is the
+    number of distinct elements, not O(n²) in Python.
+    """
+    unique = sorted(set(syms))
+    elem_to_idx = {s: i for i, s in enumerate(unique)}
+
+    # Build a small (E, E) cutoff matrix for unique elements only, then
+    # expand to (n, n) by mapping each atom to its element row/col.
+    vdw = np.array([DATA.vdw.get(s, 2.0) for s in unique])
+    tf = np.array([[_bond_threshold_factor(si, sj) for sj in unique] for si in unique])
+    elem_thresh = tf * (vdw[:, None] + vdw[None, :])  # (E, E)
+
+    idx = np.array([elem_to_idx[s] for s in syms])  # (n,)
+    return elem_thresh[idx[:, None], idx[None, :]]  # (n, n)
+
+
+def _bond_threshold_factor(sym_i: str, sym_j: str) -> float:
+    """Return the bond-distance threshold multiplier for a pair of element symbols."""
+    metals = DATA.metals
+    hi, hj = sym_i == "H", sym_j == "H"
+    mi, mj = sym_i in metals, sym_j in metals
+    if hi and hj:
+        return _bond_thresholds.threshold_h_h
+    if hi or hj:
+        return _bond_thresholds.threshold_h_metal if (mi or mj) else _bond_thresholds.threshold_h_nonmetal
+    if mi and mj:
+        return _bond_thresholds.threshold_metal_metal_self
+    if mi or mj:
+        metal_sym = sym_i if sym_i in metals else sym_j
+        if metal_sym in DATA.sblock_metals:
+            return _bond_thresholds.threshold_sblock_ligand
+        return _bond_thresholds.threshold_metal_ligand
+    return _bond_thresholds.threshold_nonmetal_nonmetal
+
+
 def _is_bonded(sym_i: str, sym_j: str, dist: float) -> bool:
     """Return True if two atoms at *dist* Å apart are likely bonded.
 
@@ -50,19 +88,7 @@ def _is_bonded(sym_i: str, sym_j: str, dist: float) -> bool:
     """
     ri = DATA.vdw.get(sym_i, 2.0)
     rj = DATA.vdw.get(sym_j, 2.0)
-    metals = DATA.metals
-    hi, hj = sym_i == "H", sym_j == "H"
-    mi, mj = sym_i in metals, sym_j in metals
-    if hi and hj:
-        t = _bond_thresholds.threshold_h_h
-    elif hi or hj:
-        t = _bond_thresholds.threshold_h_metal if (mi or mj) else _bond_thresholds.threshold_h_nonmetal
-    elif mi and mj:
-        t = _bond_thresholds.threshold_metal_metal_self
-    elif mi or mj:
-        t = _bond_thresholds.threshold_metal_ligand
-    else:
-        t = _bond_thresholds.threshold_nonmetal_nonmetal
+    t = _bond_threshold_factor(sym_i, sym_j)
     return dist < t * (ri + rj)
 
 
@@ -154,7 +180,7 @@ def build_supercell(graph: "nx.Graph", cell_data: CellData, repeats: tuple[int, 
     if m < 1 or n < 1 or l_rep < 1:
         raise ValueError(f"supercell repeats must be >= 1, got {repeats!r}")
 
-    if any(bool(graph.nodes[nid].get("image", False)) for nid in graph.nodes()):
+    if any(graph.nodes[nid].get("image", False) for nid in graph.nodes()):
         raise ValueError("build_supercell: graph already contains image atoms (apply before add_crystal_images)")
 
     a = np.array(cell_data.lattice[0], dtype=float)
@@ -194,7 +220,10 @@ def build_supercell(graph: "nx.Graph", cell_data: CellData, repeats: tuple[int, 
             new_g.add_edge(base + ui, base + vi, **data)
 
     # -- 3. Stitch cross-boundary bonds (same logic as add_crystal_images) -
-    # Only the 13 lexicographically-forward shifts so each pair is visited once.
+    base_syms = [graph.nodes[nid]["symbol"] for nid in base_nodes]
+    thresh = _build_threshold_matrix(base_syms)  # (n_base, n_base)
+
+    # Only the 13 forward shifts (half of 26) so each replica pair is checked once.
     forward_shifts = [(dx, dy, dz) for dx, dy, dz in _product((-1, 0, 1), repeat=3) if (dx, dy, dz) > (0, 0, 0)]
     for dx, dy, dz in forward_shifts:
         for ii, jj, kk in _product(range(m), range(n), range(l_rep)):
@@ -203,16 +232,13 @@ def build_supercell(graph: "nx.Graph", cell_data: CellData, repeats: tuple[int, 
                 continue
             src_base = (ii * n * l_rep + jj * l_rep + kk) * n_base
             tgt_base = (ni * n * l_rep + nj * l_rep + nk) * n_base
-            for u in range(n_base):
-                sid = src_base + u
-                spos = np.array(new_g.nodes[sid]["position"])
-                ssym = new_g.nodes[sid]["symbol"]
-                for v in range(n_base):
-                    tid = tgt_base + v
-                    tpos = np.array(new_g.nodes[tid]["position"])
-                    tsym = new_g.nodes[tid]["symbol"]
-                    if _is_bonded(ssym, tsym, float(np.linalg.norm(spos - tpos))):
-                        new_g.add_edge(sid, tid, bond_order=1.0)
+            # Vectorized all-pairs distance between the two replicas.
+            src_pos = np.array([new_g.nodes[src_base + u]["position"] for u in range(n_base)])
+            tgt_pos = np.array([new_g.nodes[tgt_base + v]["position"] for v in range(n_base)])
+            dists = np.linalg.norm(src_pos[:, None, :] - tgt_pos[None, :, :], axis=2)
+            bonded_mask = dists < thresh
+            for u, v in zip(*np.where(bonded_mask), strict=False):
+                new_g.add_edge(src_base + int(u), tgt_base + int(v), bond_order=1.0)
 
     # -- 4. Graph-level metadata (lattice stays as unit cell for cell box) --
     new_g.graph.update(dict(graph.graph))
@@ -236,8 +262,15 @@ def add_crystal_images(graph: nx.Graph, crystal_data: CellData) -> int:
     if not cell_ids:
         return 0
 
-    cell_syms = {i: graph.nodes[i]["symbol"] for i in cell_ids}
-    cell_pos = {i: np.array(graph.nodes[i]["position"]) for i in cell_ids}
+    n_cell = len(cell_ids)
+    cell_syms_list = [graph.nodes[i]["symbol"] for i in cell_ids]
+    cell_pos_arr = np.array([graph.nodes[i]["position"] for i in cell_ids])  # (n, 3)
+
+    thresh = _build_threshold_matrix(cell_syms_list)  # (n, n)
+
+    # Precompute H and C masks for ghost-H filtering
+    is_h = [s == "H" for s in cell_syms_list]
+    is_c = [s == "C" for s in cell_syms_list]
 
     next_id = max(cell_ids) + 1
     n_added = 0
@@ -246,34 +279,38 @@ def add_crystal_images(graph: nx.Graph, crystal_data: CellData) -> int:
 
     for dx, dy, dz in shifts:
         offset = dx * a + dy * b + dz * c
-        for src_id in cell_ids:
-            sym_i = cell_syms[src_id]
-            img_pos = cell_pos[src_id] + offset
+        img_pos_arr = cell_pos_arr + offset  # (n, 3)
 
-            bonded_to: list[int] = [
-                j for j in cell_ids if _is_bonded(sym_i, cell_syms[j], float(np.linalg.norm(img_pos - cell_pos[j])))
-            ]
+        # All-pairs distances in one numpy call — this is the hot path.
+        dists = np.linalg.norm(img_pos_arr[:, None, :] - cell_pos_arr[None, :, :], axis=2)
+        bonded_mask = dists < thresh  # (n, n) bool
 
-            # Skip ghost hydrogens that only bond to C (C-H across boundary
-            # is not chemically interesting and clutters the image).
-            if sym_i == "H":
-                bonded_to = [j for j in bonded_to if cell_syms[j] != "C"]
-
-            if not bonded_to:
+        # Walk the mask to add ghost nodes + edges (serial: graph mutation).
+        for src_idx in range(n_cell):
+            bonded_cols = np.where(bonded_mask[src_idx])[0]
+            if len(bonded_cols) == 0:
                 continue
 
+            # Ghost H that only bonds to C across boundary is not interesting.
+            if is_h[src_idx]:
+                bonded_cols = [j for j in bonded_cols if not is_c[j]]
+                if not bonded_cols:
+                    continue
+
+            src_id = cell_ids[src_idx]
+            img_pos = img_pos_arr[src_idx]
             img_id = next_id
             next_id += 1
             n_added += 1
             graph.add_node(
                 img_id,
-                symbol=sym_i,
+                symbol=cell_syms_list[src_idx],
                 position=(float(img_pos[0]), float(img_pos[1]), float(img_pos[2])),
                 image=True,
                 source=src_id,
             )
-            for j in bonded_to:
-                graph.add_edge(img_id, j, bond_order=1.0, image_bond=True)
+            for j in bonded_cols:
+                graph.add_edge(img_id, cell_ids[j], bond_order=1.0, image_bond=True)
 
     logger.debug("Added %d image atoms", n_added)
     return n_added
