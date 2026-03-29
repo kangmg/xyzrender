@@ -5,13 +5,15 @@ All user-facing atom indices are 1-indexed. Internally everything converts to 0-
 
 from __future__ import annotations
 
-import sys
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 from xyzrender.measure import _pos
+
+logger = logging.getLogger(__name__)
 
 
 def _fmt(val: float, spec: str) -> str:
@@ -85,10 +87,7 @@ def _check_atom(idx_1based: int, graph) -> int:
 
 def _warn_no_bond(i: int, j: int) -> None:
     """Warn once that an explicit i-j pair has no graph edge."""
-    print(
-        f"Warning: no bond between atoms {i + 1} and {j + 1} - placing label at midpoint",
-        file=sys.stderr,
-    )
+    logger.warning("no bond between atoms %d and %d - placing label at midpoint", i + 1, j + 1)
 
 
 def _parse_spec(tokens: list[str], graph) -> list[Annotation]:

@@ -60,3 +60,27 @@ def svg_to_pdf(svg: str, output: str) -> None:
     import cairosvg
 
     cairosvg.svg2pdf(bytestring=svg.encode(), write_to=output)
+
+
+def svg_to_tiff(svg: str, output: str, *, size: int = 800, dpi: int = 300) -> None:
+    """Render SVG at target DPI and save as TIFF.
+
+    Rasterises via resvg-py (preferred) or cairosvg, then converts the
+    lossless PNG bytes to LZW-compressed TIFF via Pillow.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    if _has_resvg():
+        from resvg_py import svg_to_bytes
+
+        zoom = max(1, round(dpi / _SVG_BASE_DPI))
+        png_data = svg_to_bytes(svg_string=svg, zoom=zoom)
+    else:
+        import cairosvg
+
+        png_data = cairosvg.svg2png(bytestring=svg.encode(), output_width=size, output_height=size, dpi=dpi)
+
+    img = Image.open(BytesIO(png_data))
+    img.save(output, format="TIFF", dpi=(dpi, dpi), compression="tiff_deflate")

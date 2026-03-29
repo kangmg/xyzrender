@@ -9,7 +9,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_EXTENSIONS = {"svg", "png", "pdf"}
+_SUPPORTED_EXTENSIONS = {"svg", "png", "pdf", "tiff", "tif"}
 
 
 def _basename(input_path: str | None, from_stdin: bool) -> str:
@@ -50,11 +50,93 @@ def _flatten_specs(items: list[str]) -> list[str]:
     return out
 
 
+_COMPACT_HELP = """\
+Usage: xyzrender [input] [options]
+
+Input/Output:
+  input                   .xyz .mol .sdf .mol2 .pdb .cif .cube .com .nw ...
+  -o FILE                 Output file (.svg, .png, .pdf, .tif, .tiff)
+  -c N / -m N             Charge / multiplicity (for bond order detection)
+  --smi SMILES            Render from SMILES string (requires rdkit)
+
+Styling:
+  --config NAME           Preset: default flat paton skeletal bubble tube
+                          mtube wire graph pmol (or path to custom .json)
+  -a F / -b F             Atom scale / Bond width
+  -B COLOR / -t           Background colour / transparent
+  --grad / --no-grad      Atom gradients on/off
+  --fog / --no-fog        Depth fog on/off
+  --dof                   Depth of field - blur "back" atoms
+
+Display:
+  --hy [ATOMS] / --no-hy  Show/hide H atoms (all or specific indices)
+  --bo / --no-bo          Show/hide bond orders
+  --unbond SPEC           Hide bonds: M-L  sbm  Fe-het  1-3  pi
+  --bond PAIR             Force-show bonds: 1-3  4-5
+  --vdw [ATOMS]           VdW spheres (all or specific atoms/elements: 1,2,6-8,M,H)
+  --no-bonds              Hide all bonds
+
+Orientation:
+  --orient / --no-orient  PCA auto-orientation on/off
+  -I                      Interactive viewer (requires vmol)
+  --ref [FILE]            Save/load orientation reference
+
+TS / NCI:
+  --ts / --nci            Auto-detect TS bonds / NCI interactions
+  --ts-bond / --nci-bond  Manual bond pairs (1-indexed)
+
+GIF Animation:
+  --gif-rot [AXIS]        Rotation GIF (x/y/z/xy/xz/.../hkl, default: y)
+  --gif-trj               Trajectory - requires mutiframe .xyz or calculation output
+  --gif-ts                TS vibration GIF - required vib trj or output with Hessian
+  --gif-diffuse           Diffuse assembly GIF
+  -go FILE / --gif-fps N  GIF output path / frames per second
+
+Surfaces:
+  --mo / --dens           MO lobes / density isosurface (.cube input)
+  --esp CUBE              ESP colour mapping (density + ESP cubes)
+  --nci-surf CUBE         NCI interaction surface (density + gradient cubes)
+  --iso F                 Isovalue (MO: 0.05, dens: 0.001, NCI: 0.3)
+  --hull [INDICES]        Convex hull (all / "rings" / atom subsets)
+  --surface-style STYLE   solid, mesh, contour, dot
+
+Overlay / Ensemble:
+  --overlay FILE          Overlay molecule (aligned, drawn in magenta)
+  --ensemble              Multi-frame overlay from trajectory
+
+Annotations:
+  --idx [FMT]             Atom index labels: sn (C1), s (C), n (1)
+  -l TOKENS               Annotation: "-l 1 2 d" (distance), "-l 2 a" (angles)
+  --stereo [CLASSES]      Stereochemistry labels
+
+Highlight / Regions:
+  --mol-color COLOR       Flat colour for all atoms
+  --hl ATOMS [COLOR]      Highlight atom group (repeatable)
+  --region ATOMS CONFIG   Per-atom style region
+
+Crystal:
+  --cell                  Draw unit cell box
+  --ghosts / --no-ghosts  Periodic image atoms on/off
+  --axes / --no-axes      Crystallographic axis arrows
+  --axis HKL              Orient along Miller index (e.g. 111)
+  --supercell M N L       Repeat unit cell
+
+Run 'xyzrender --help' for full details on every option.
+"""
+
+
 def main() -> None:
     """Entry point for the CLI."""
-    p = argparse.ArgumentParser(
-        prog="xyzrender", description="Publication-quality molecular graphics from the command line."
-    )
+    from xyzrender import __version__
+
+    # Intercept -h before argparse to print compact help
+    if "-h" in sys.argv[1:] and "--help" not in sys.argv[1:]:
+        print(f"xyzrender v{__version__} — publication-quality molecular graphics\n")
+        print(_COMPACT_HELP)
+        raise SystemExit(0)
+
+    p = argparse.ArgumentParser(prog="xyzrender", description="Publication-quality molecular graphics.")
+    p.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
 
     # --- Input / Output ---
     io_g = p.add_argument_group("input/output")
@@ -577,7 +659,6 @@ def main() -> None:
         hy_spec = True if args.hy == "" else parse_atom_indices(args.hy, one_indexed=True)
 
     # Resolve orient flag before build_config so it can be passed in directly
-    from_stdin = not args.input and not sys.stdin.isatty()
     _orient: bool | None = args.orient
     if _orient is None and (args.interactive or from_stdin):
         _orient = False
@@ -632,7 +713,7 @@ def main() -> None:
     if args.hl is not None:
         for entry in args.hl:
             if len(entry) > 2:
-                raise SystemExit(f"error: --hl takes 1-2 arguments (ATOMS [COLOR]), got {len(entry)}")
+                p.error(f"--hl takes 1-2 arguments (ATOMS [COLOR]), got {len(entry)}")
         _highlight = [tuple(e) for e in args.hl]
 
     # Bond coloring
@@ -672,10 +753,7 @@ def main() -> None:
     # Warn when SVG-only flags are combined with GIF output
     annotation_flags_used = args.idx is not None or args.label_specs or args.label
     if annotation_flags_used and wants_gif:
-        print(
-            "Warning: --idx, -l and --label apply to static SVG output only and will not appear in the GIF.",
-            file=sys.stderr,
-        )
+        logger.warning("--idx, -l and --label apply to static SVG output only and will not appear in the GIF")
 
     is_cube = args.input and args.input.endswith(".cube")
 
@@ -712,8 +790,8 @@ def main() -> None:
     # --- Load molecule ---
     needs_ts = args.ts_detect or args.gif_ts
     if is_cube and needs_ts:
-        print(
-            "Warning: --ts/--gif-ts has no effect with cube files (single geometry, no frequency data). "
+        logger.warning(
+            "--ts/--gif-ts has no effect with cube files (single geometry, no frequency data). "
             "Use --ts-bond to manually specify TS bonds."
         )
 

@@ -619,7 +619,7 @@ def render(
     SVGResult
         Wrapper around the SVG string.  Displays inline in Jupyter.
     """
-    from xyzrender.config import build_config, build_surface_params, collect_surf_overrides
+    from xyzrender.config import build_config
     from xyzrender.renderer import render_svg
 
     # --- Early parameter validation ---
@@ -847,95 +847,37 @@ def render(
         _cls = set(stereo) if isinstance(stereo, list) else None
         cfg.annotations.extend(build_stereo_annotations(rmol.graph, rs_style=stereo_style, classes=_cls))
 
-    # --- Early overlay validation (before ghost atoms are added to g1) ---
-    if overlay is not None and mol.cell_data is not None:
-        msg = "overlay= is mutually exclusive with crystal/cell display"
-        raise ValueError(msg)
-    if overlay is not None and (mo or dens or esp is not None or nci is not None):
-        msg = "overlay= is mutually exclusive with surface rendering (mo/dens/esp/nci)"
-        raise ValueError(msg)
-
-    # --- Overlay alignment ---
+    # --- Overlay ---
     if overlay is not None:
-        from xyzrender.overlay import align, merge_graphs
-        from xyzrender.utils import pca_orient
-
-        if isinstance(overlay, Molecule):
-            overlay_mol = overlay
-        else:
-            # Inherit charge/multiplicity from the main molecule so bond-order
-            # detection uses the correct electron count for charged species.
-            _ov_charge = mol.graph.graph.get("total_charge", 0)
-            _ov_mult = mol.graph.graph.get("multiplicity")
-            overlay_mol = load(overlay, charge=_ov_charge, multiplicity=_ov_mult)
-        g1 = rmol.graph
-        g2 = copy.deepcopy(overlay_mol.graph)
-
-        # PCA-orient g1 (the already-copied mol graph) to set the viewing frame
-        if cfg.auto_orient and g1.number_of_nodes() > 1:
-            nodes1 = list(g1.nodes())
-            pos1 = np.array([g1.nodes[n]["position"] for n in nodes1], dtype=float)
-            atom_mask = np.array([g1.nodes[n]["symbol"] != "*" for n in nodes1])
-            fit_mask = atom_mask if not atom_mask.all() else None
-            pos1_oriented = pca_orient(pos1, fit_mask=fit_mask)
-            for k, nid in enumerate(nodes1):
-                g1.nodes[nid]["position"] = tuple(float(v) for v in pos1_oriented[k])
-        cfg.auto_orient = False
-
-        if overlay_color is not None:
-            cfg.overlay_color = resolve_color(overlay_color)
-        # Convert 1-indexed align_atoms (str or list) to 0-indexed for overlay
-        _ov_align = parse_atom_indices(align_atoms) if align_atoms is not None else None
-        aligned2 = align(g1, g2, align_atoms=_ov_align)
-        rmol = Molecule(
-            graph=merge_graphs(g1, g2, aligned2, overlay_color=cfg.overlay_color),
-            cube_data=None,
-            cell_data=None,
-            oriented=True,
+        rmol = _apply_overlay(
+            mol,
+            rmol,
+            cfg,
+            overlay,
+            overlay_color=overlay_color,
+            align_atoms=align_atoms,
+            has_surfaces=mo or dens or esp is not None or nci is not None,
         )
 
-    # --- Skeletal-style validation ---
-    if cfg.skeletal_style:
-        if mo or dens or esp is not None:
-            msg = "skeletal_style is mutually exclusive with surface rendering (mo/dens/esp)"
-            raise ValueError(msg)
-        if vdw is not None:
-            msg = "skeletal_style is mutually exclusive with vdw spheres"
-            raise ValueError(msg)
+    # --- Warn about ignored surface-specific params ---
+    if not mo and (mo_pos_color or mo_neg_color or mo_blur is not None or mo_upsample is not None or flat_mo):
+        logger.warning("MO-specific params ignored (mo not active)")
+    if not dens and dens_color is not None:
+        logger.warning("dens_color ignored (dens not active)")
+    if nci is None and nci_mode is not None:
+        logger.warning("nci_mode ignored (no NCI surface)")
+    if hull is None and (hull_color is not None or hull_opacity is not None or hull_edge is not None):
+        logger.warning("hull params ignored (hull not active)")
 
-    # --- Surface validation ---
-    cube_data = rmol.cube_data
-    _hull_active = cfg.show_convex_hull
-    if _hull_active and (mo or dens or esp is not None or nci is not None):
-        msg = "convex hull and surface rendering (mo/dens/esp/nci) are mutually exclusive"
-        raise ValueError(msg)
-    if vdw is not None and (mo or dens or esp is not None or nci is not None):
-        msg = "vdw spheres and surface rendering (mo/dens/esp/nci) are mutually exclusive"
-        raise ValueError(msg)
-    n_surf = sum([mo, dens, esp is not None, nci is not None])
-    if n_surf > 1:
-        active = [n for n, v in [("mo", mo), ("dens", dens), ("esp", esp), ("nci", nci)] if v]
-        msg = f"Surface flags are mutually exclusive: {', '.join(active)}"
-        raise ValueError(msg)
-    if mo and cube_data is None:
-        msg = "mo=True requires a .cube file loaded via load()"
-        raise ValueError(msg)
-    if dens and cube_data is None:
-        msg = "dens=True requires a .cube file loaded via load()"
-        raise ValueError(msg)
-    if esp is not None and cube_data is None:
-        msg = "esp= requires a density .cube file loaded via load()"
-        raise ValueError(msg)
-    if nci is not None and cube_data is None:
-        msg = "nci= requires a density .cube file loaded via load()"
-        raise ValueError(msg)
-
-    has_mo = bool(mo)
-    has_dens = bool(dens)
-    has_esp = esp is not None
-    has_nci = nci is not None
-
-    surf_overrides = collect_surf_overrides(
+    # --- Surfaces ---
+    _validate_and_compute_surfaces(
+        rmol,
+        cfg,
+        mo=mo,
+        dens=dens,
+        esp=esp,
+        nci=nci,
+        vdw=vdw,
         iso=iso,
         mo_pos_color=mo_pos_color,
         mo_neg_color=mo_neg_color,
@@ -945,35 +887,8 @@ def render(
         dens_color=dens_color,
         nci_mode=nci_mode,
         nci_cutoff=nci_cutoff,
+        surface_style=surface_style,
     )
-
-    mo_params, dens_params, esp_params, nci_params = build_surface_params(
-        cfg,
-        surf_overrides,
-        has_mo=has_mo,
-        has_dens=has_dens,
-        has_esp=has_esp,
-        has_nci=has_nci,
-    )
-
-    from xyzrender.cube import parse_cube
-    from xyzrender.surfaces import compute_dens_surface, compute_esp_surface, compute_mo_surface, compute_nci_surface
-
-    if mo_params is not None and cube_data is not None:
-        compute_mo_surface(rmol.graph, cube_data, cfg, mo_params)
-
-    if dens_params is not None and cube_data is not None:
-        compute_dens_surface(rmol.graph, cube_data, cfg, dens_params)
-
-    if esp_params is not None and esp is not None and cube_data is not None:
-        if cfg.surface_style != "solid":
-            logger.info("ESP uses raster rendering; --surface-style %s is ignored", cfg.surface_style)
-        esp_cube = parse_cube(str(esp))
-        compute_esp_surface(rmol.graph, cube_data, esp_cube, cfg, esp_params)
-
-    if nci_params is not None and nci is not None and cube_data is not None:
-        nci_cube = parse_cube(str(nci))
-        compute_nci_surface(rmol.graph, cube_data, nci_cube, cfg, nci_params)
 
     # --- Bond rules (unbond / bond) ---
     if cfg.unbond or cfg.bond:
@@ -2057,6 +1972,178 @@ def _apply_and_save_ref(rmol: Molecule, cfg: "RenderConfig", ref_path: Path) -> 
     rmol.to_xyz(ref_path, title="xyzrender orientation reference")
 
 
+def _apply_overlay(
+    mol: Molecule,
+    rmol: Molecule,
+    cfg: "RenderConfig",
+    overlay: "str | os.PathLike | Molecule",
+    *,
+    overlay_color: str | None,
+    align_atoms: "str | list[int] | None",
+    has_surfaces: bool,
+) -> Molecule:
+    """Load, align, and merge an overlay molecule onto *rmol*.
+
+    Validates mutual exclusivity with crystal and surface modes, PCA-orients
+    the main molecule, Kabsch-aligns the overlay, and returns a new
+    :class:`Molecule` with the merged graph.
+    """
+    from xyzrender.colors import resolve_color
+    from xyzrender.overlay import align, merge_graphs
+    from xyzrender.utils import parse_atom_indices, pca_orient
+
+    if mol.cell_data is not None:
+        msg = "overlay= is mutually exclusive with crystal/cell display"
+        raise ValueError(msg)
+    if has_surfaces:
+        msg = "overlay= is mutually exclusive with surface rendering (mo/dens/esp/nci)"
+        raise ValueError(msg)
+
+    if isinstance(overlay, Molecule):
+        overlay_mol = overlay
+    else:
+        _ov_charge = mol.graph.graph.get("total_charge", 0)
+        _ov_mult = mol.graph.graph.get("multiplicity")
+        overlay_mol = load(overlay, charge=_ov_charge, multiplicity=_ov_mult)
+    g1 = rmol.graph
+    g2 = copy.deepcopy(overlay_mol.graph)
+
+    # PCA-orient g1 (the already-copied mol graph) to set the viewing frame
+    if cfg.auto_orient and g1.number_of_nodes() > 1:
+        nodes1 = list(g1.nodes())
+        pos1 = np.array([g1.nodes[n]["position"] for n in nodes1], dtype=float)
+        atom_mask = np.array([g1.nodes[n]["symbol"] != "*" for n in nodes1])
+        fit_mask = atom_mask if not atom_mask.all() else None
+        pos1_oriented = pca_orient(pos1, fit_mask=fit_mask)
+        for k, nid in enumerate(nodes1):
+            g1.nodes[nid]["position"] = tuple(float(v) for v in pos1_oriented[k])
+    cfg.auto_orient = False
+
+    if overlay_color is not None:
+        cfg.overlay_color = resolve_color(overlay_color)
+    _ov_align = parse_atom_indices(align_atoms) if align_atoms is not None else None
+    aligned2 = align(g1, g2, align_atoms=_ov_align)
+    return Molecule(
+        graph=merge_graphs(g1, g2, aligned2, overlay_color=cfg.overlay_color),
+        cube_data=None,
+        cell_data=None,
+        oriented=True,
+    )
+
+
+def _validate_and_compute_surfaces(
+    rmol: Molecule,
+    cfg: "RenderConfig",
+    *,
+    mo: bool,
+    dens: bool,
+    esp: "str | os.PathLike | None",
+    nci: "str | os.PathLike | None",
+    vdw: "bool | list[int] | None",
+    iso: float | None,
+    mo_pos_color: str | None,
+    mo_neg_color: str | None,
+    mo_blur: float | None,
+    mo_upsample: int | None,
+    flat_mo: bool,
+    dens_color: str | None,
+    nci_mode: str | None,
+    nci_cutoff: float | None,
+    surface_style: str | None,
+) -> None:
+    """Validate surface flag combinations and compute active surfaces.
+
+    Checks mutual exclusivity (surfaces vs hull vs vdw vs skeletal), verifies
+    cube data availability, builds surface params, and runs the compute
+    functions that populate *cfg* with contour data.
+    """
+    from xyzrender.config import build_surface_params, collect_surf_overrides
+
+    # --- Skeletal-style validation ---
+    if cfg.skeletal_style:
+        if mo or dens or esp is not None:
+            msg = "skeletal_style is mutually exclusive with surface rendering (mo/dens/esp)"
+            raise ValueError(msg)
+        if vdw is not None:
+            msg = "skeletal_style is mutually exclusive with vdw spheres"
+            raise ValueError(msg)
+
+    # --- Surface validation ---
+    cube_data = rmol.cube_data
+    _hull_active = cfg.show_convex_hull
+    if _hull_active and (mo or dens or esp is not None or nci is not None):
+        msg = "convex hull and surface rendering (mo/dens/esp/nci) are mutually exclusive"
+        raise ValueError(msg)
+    if vdw is not None and (mo or dens or esp is not None or nci is not None):
+        msg = "vdw spheres and surface rendering (mo/dens/esp/nci) are mutually exclusive"
+        raise ValueError(msg)
+    n_surf = sum([mo, dens, esp is not None, nci is not None])
+    if n_surf > 1:
+        active = [n for n, v in [("mo", mo), ("dens", dens), ("esp", esp), ("nci", nci)] if v]
+        msg = f"Surface flags are mutually exclusive: {', '.join(active)}"
+        raise ValueError(msg)
+    if mo and cube_data is None:
+        msg = "mo=True requires a .cube file loaded via load()"
+        raise ValueError(msg)
+    if dens and cube_data is None:
+        msg = "dens=True requires a .cube file loaded via load()"
+        raise ValueError(msg)
+    if esp is not None and cube_data is None:
+        msg = "esp= requires a density .cube file loaded via load()"
+        raise ValueError(msg)
+    if nci is not None and cube_data is None:
+        msg = "nci= requires a density .cube file loaded via load()"
+        raise ValueError(msg)
+
+    has_mo = bool(mo)
+    has_dens = bool(dens)
+    has_esp = esp is not None
+    has_nci = nci is not None
+
+    if not (has_mo or has_dens or has_esp or has_nci):
+        return
+
+    surf_overrides = collect_surf_overrides(
+        iso=iso,
+        mo_pos_color=mo_pos_color,
+        mo_neg_color=mo_neg_color,
+        mo_blur=mo_blur,
+        mo_upsample=mo_upsample,
+        flat_mo=flat_mo,
+        dens_color=dens_color,
+        nci_mode=nci_mode,
+        nci_cutoff=nci_cutoff,
+    )
+
+    mo_params, dens_params, esp_params, nci_params = build_surface_params(
+        cfg,
+        surf_overrides,
+        has_mo=has_mo,
+        has_dens=has_dens,
+        has_esp=has_esp,
+        has_nci=has_nci,
+    )
+
+    from xyzrender.cube import parse_cube
+    from xyzrender.surfaces import compute_dens_surface, compute_esp_surface, compute_mo_surface, compute_nci_surface
+
+    if mo_params is not None and cube_data is not None:
+        compute_mo_surface(rmol.graph, cube_data, cfg, mo_params)
+
+    if dens_params is not None and cube_data is not None:
+        compute_dens_surface(rmol.graph, cube_data, cfg, dens_params)
+
+    if esp_params is not None and esp is not None and cube_data is not None:
+        if cfg.surface_style != "solid":
+            logger.info("ESP uses raster rendering; --surface-style %s is ignored", cfg.surface_style)
+        esp_cube = parse_cube(str(esp))
+        compute_esp_surface(rmol.graph, cube_data, esp_cube, cfg, esp_params)
+
+    if nci_params is not None and nci is not None and cube_data is not None:
+        nci_cube = parse_cube(str(nci))
+        compute_nci_surface(rmol.graph, cube_data, nci_cube, cfg, nci_params)
+
+
 def _apply_cell_config(
     mol: Molecule,
     cfg: RenderConfig,
@@ -2153,6 +2240,10 @@ def _write_output(svg: str, output: Path, cfg: RenderConfig) -> None:
         from xyzrender.export import svg_to_pdf
 
         svg_to_pdf(svg, str(output))
+    elif ext in (".tiff", ".tif"):
+        from xyzrender.export import svg_to_tiff
+
+        svg_to_tiff(svg, str(output), size=cfg.canvas_size, dpi=getattr(cfg, "dpi", 300))
     else:
-        msg = f"Unsupported output format: {ext!r} (use .svg, .png, or .pdf)"
+        msg = f"Unsupported output format: {ext!r} (use .svg, .png, .pdf, or .tiff)"
         raise ValueError(msg)
