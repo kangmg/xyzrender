@@ -797,10 +797,29 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             _bond_line(lx1, ly1, lx2, ly2, w, c1, lpx, lpy, shade_cfg, op_attr, dash)
         else:
             t = ri / (ri + rj) if (ri + rj) > 0 else 0.5
-            xm = lx1 + (lx2 - lx1) * t
-            ym = ly1 + (ly2 - ly1) * t
-            _bond_line(lx1, ly1, xm, ym, w, c1, lpx, lpy, shade_cfg, op_attr, dash)
-            _bond_line(xm, ym, lx2, ly2, w, c2, lpx, lpy, shade_cfg, op_attr, dash)
+            # Keep dashed stroke continuity (e.g. aromatic dashed side) by using
+            # one line with a hard-stop gradient at the endpoint split ratio.
+            if dash:
+                sid = f"be{next(_bs_counter)}"
+                off = max(0.0, min(100.0, 100.0 * t))
+                svg.append(
+                    f'  <defs><linearGradient id="{sid}" x1="{lx1:.1f}" y1="{ly1:.1f}" '
+                    f'x2="{lx2:.1f}" y2="{ly2:.1f}" gradientUnits="userSpaceOnUse">'
+                    f'<stop offset="0%" stop-color="{c1}"/>'
+                    f'<stop offset="{off:.4f}%" stop-color="{c1}"/>'
+                    f'<stop offset="{off:.4f}%" stop-color="{c2}"/>'
+                    f'<stop offset="100%" stop-color="{c2}"/>'
+                    f"</linearGradient></defs>"
+                )
+                svg.append(
+                    f'  <line x1="{lx1:.1f}" y1="{ly1:.1f}" x2="{lx2:.1f}" y2="{ly2:.1f}" '
+                    f'stroke="url(#{sid})" stroke-width="{w:.1f}" stroke-linecap="round"{dash}{op_attr}/>'
+                )
+            else:
+                xm = lx1 + (lx2 - lx1) * t
+                ym = ly1 + (ly2 - ly1) * t
+                _bond_line(lx1, ly1, xm, ym, w, c1, lpx, lpy, shade_cfg, op_attr, dash)
+                _bond_line(xm, ym, lx2, ly2, w, c2, lpx, lpy, shade_cfg, op_attr, dash)
 
     # Pre-resolve bond config for the common case (no style regions)
     _base_bcfg = cfg
@@ -821,6 +840,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
         color_hex,
         lpx,
         lpy,
+        *,
         shade,
         op_attr,
         dash,
@@ -831,8 +851,28 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
         rj_vdw,
         fi,
         fj,
+        stroke_i,
+        stroke_j,
+        stroke_w,
     ):
         """Dispatch a single bond line — element-coloured or uniform."""
+        if stroke_i and stroke_w > 0:
+            stroke = stroke_i
+            if stroke_j and stroke_j != stroke_i:
+                sid = f"bo{next(_bs_counter)}"
+                svg.append(
+                    f'  <defs><linearGradient id="{sid}" x1="{lx1:.1f}" y1="{ly1:.1f}" '
+                    f'x2="{lx2:.1f}" y2="{ly2:.1f}" gradientUnits="userSpaceOnUse">'
+                    f'<stop offset="0%" stop-color="{stroke_i}"/>'
+                    f'<stop offset="100%" stop-color="{stroke_j}"/>'
+                    f"</linearGradient></defs>"
+                )
+                stroke = f"url(#{sid})"
+            ow = w + 2 * stroke_w
+            _bond_outline_layer.append(
+                f'  <line x1="{lx1:.1f}" y1="{ly1:.1f}" x2="{lx2:.1f}" y2="{ly2:.1f}" '
+                f'stroke="{stroke}" stroke-width="{ow:.1f}" stroke-linecap="round"{dash}{op_attr}/>'
+            )
         if by_element:
             _element_line(
                 lx1,
@@ -935,21 +975,20 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
 
         op_attr = f' opacity="{opacity:.2f}"' if opacity < 1.0 else ""
 
-        if _stroke_color and _stroke_width > 0:
-            ow = _bw + 2 * _stroke_width
-            _bond_outline_layer.append(
-                f'  <line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-                f'stroke="{_stroke_color}" stroke-width="{ow:.1f}" stroke-linecap="round"{op_attr}/>'
-            )
-
-        # Common args for _emit_line
+        # Per-bond args shared by every _emit_line call
         _fi = fog_f[ai]
         _fj = fog_f[aj]
         _ri_vdw = raw_vdw[ai]
         _rj_vdw = raw_vdw[aj]
+        _si = _stroke_color
+        _sj = _stroke_color
+        if _stroke_color and cfg.fog:
+            _si = blend_fog(_stroke_color, fog_rgb, _fi)
+            _sj = blend_fog(_stroke_color, fog_rgb, _fj)
 
         if style == BondStyle.DASHED:
             dd, gg = _bw * 1.2, _bw * 2.2
+            dash = f' stroke-dasharray="{dd:.1f},{gg:.1f}"'
             _emit_line(
                 x1,
                 y1,
@@ -959,20 +998,24 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 color,
                 px,
                 py,
-                None,
-                op_attr,
-                f' stroke-dasharray="{dd:.1f},{gg:.1f}"',
-                by_element,
-                ci_hex,
-                cj_hex,
-                _ri_vdw,
-                _rj_vdw,
-                _fi,
-                _fj,
+                shade=None,
+                op_attr=op_attr,
+                dash=dash,
+                by_element=by_element,
+                ci_hex=ci_hex,
+                cj_hex=cj_hex,
+                ri_vdw=_ri_vdw,
+                rj_vdw=_rj_vdw,
+                fi=_fi,
+                fj=_fj,
+                stroke_i=_si,
+                stroke_j=_sj,
+                stroke_w=_stroke_width,
             )
             return
         if style == BondStyle.DOTTED:
             dd, gg = _bw * 0.08, _bw * 2
+            dash = f' stroke-dasharray="{dd:.1f},{gg:.1f}"'
             _emit_line(
                 x1,
                 y1,
@@ -982,16 +1025,19 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 color,
                 px,
                 py,
-                None,
-                op_attr,
-                f' stroke-dasharray="{dd:.1f},{gg:.1f}"',
-                by_element,
-                ci_hex,
-                cj_hex,
-                _ri_vdw,
-                _rj_vdw,
-                _fi,
-                _fj,
+                shade=None,
+                op_attr=op_attr,
+                dash=dash,
+                by_element=by_element,
+                ci_hex=ci_hex,
+                cj_hex=cj_hex,
+                ri_vdw=_ri_vdw,
+                rj_vdw=_rj_vdw,
+                fi=_fi,
+                fj=_fj,
+                stroke_i=_si,
+                stroke_j=_sj,
+                stroke_w=_stroke_width,
             )
             return
 
@@ -1011,16 +1057,19 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     color,
                     px,
                     py,
-                    _scfg if not dash else None,
-                    op_attr,
-                    dash,
-                    by_element,
-                    ci_hex,
-                    cj_hex,
-                    _ri_vdw,
-                    _rj_vdw,
-                    _fi,
-                    _fj,
+                    shade=_scfg if not dash else None,
+                    op_attr=op_attr,
+                    dash=dash,
+                    by_element=by_element,
+                    ci_hex=ci_hex,
+                    cj_hex=cj_hex,
+                    ri_vdw=_ri_vdw,
+                    rj_vdw=_rj_vdw,
+                    fi=_fi,
+                    fj=_fj,
+                    stroke_i=_si,
+                    stroke_j=_sj,
+                    stroke_w=_stroke_width,
                 )
         else:
             nb = max(1, round(bo))
@@ -1036,16 +1085,19 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     color,
                     px,
                     py,
-                    _scfg,
-                    op_attr,
-                    "",
-                    by_element,
-                    ci_hex,
-                    cj_hex,
-                    _ri_vdw,
-                    _rj_vdw,
-                    _fi,
-                    _fj,
+                    shade=_scfg,
+                    op_attr=op_attr,
+                    dash="",
+                    by_element=by_element,
+                    ci_hex=ci_hex,
+                    cj_hex=cj_hex,
+                    ri_vdw=_ri_vdw,
+                    rj_vdw=_rj_vdw,
+                    fi=_fi,
+                    fj=_fj,
+                    stroke_i=_si,
+                    stroke_j=_sj,
+                    stroke_w=_stroke_width,
                 )
 
     # --- Vectorized bond geometry precomputation ---
@@ -1088,7 +1140,15 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 ai_k, aj_k = _bpairs[k]
                 if _valid[k]:
                     g = (float(_sx[k]), float(_sy[k]), float(_ex[k]), float(_ey[k]), float(_ppx[k]), float(_ppy[k]))
-                    bond_geom[(ai_k, aj_k)] = bond_geom[(aj_k, ai_k)] = g
+                    bond_geom[(ai_k, aj_k)] = g
+                    bond_geom[(aj_k, ai_k)] = (
+                        float(_ex[k]),
+                        float(_ey[k]),
+                        float(_sx[k]),
+                        float(_sy[k]),
+                        float(-_ppx[k]),
+                        float(-_ppy[k]),
+                    )
                 else:
                     bond_geom[(ai_k, aj_k)] = bond_geom[(aj_k, ai_k)] = None
 
