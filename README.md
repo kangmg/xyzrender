@@ -12,9 +12,9 @@ Render molecular structures as publication-quality SVG, PNG, PDF, and animated G
 [![Documentation](https://readthedocs.org/projects/xyzrender/badge/?version=latest)](https://xyzrender.readthedocs.io/en/latest/)
 [![Docs](https://img.shields.io/badge/docs-readthedocs-blue?logo=readthedocs)](https://xyzrender.readthedocs.io)
 
-xyzrender turns molecular structures into clean SVG, PNG, PDF, and animated GIF graphics — ready for papers, presentations, and supporting information. It reads XYZ, mol/SDF, MOL2, PDB, SMILES, CIF, cube files, and QM input/output files from Gaussian, ORCA, NWChem, Q-Chem, Psi4, MOPAC, GAMESS, Turbomole, and periodic codes (VASP, Quantum ESPRESSO, SIESTA, ABINIT, CP2K). The SVG rendering approach is built on and inspired by [**xyz2svg**](https://github.com/briling/xyz2svg) by [Ksenia Briling **@briling**](https://github.com/briling).
+xyzrender turns molecular structures into clean vector SVG graphics — plus PNG, PDF, and animated GIF — ready for papers, presentations, and supporting information. It reads XYZ, mol/SDF, MOL2, PDB, SMILES, CIF, cube files, and QM input/output files from Gaussian, ORCA, NWChem, Q-Chem, Psi4, MOPAC, GAMESS, Turbomole, and periodic codes (VASP, Quantum ESPRESSO, SIESTA, ABINIT, CP2K). The SVG rendering approach is built on and inspired by [**xyz2svg**](https://github.com/briling/xyz2svg) by [Ksenia Briling **@briling**](https://github.com/briling).
 
-Most molecular visualisation tools require manual setup: loading files into a GUI, tweaking camera angles, exporting at the right resolution and adding specific TS or NCI bonds. `xyzrender` skips this. One command gives you a (mostly) oriented, depth-cued structure with correct bond orders, aromatic ring rendering, automatic bond connectivity, with TS bonds and NCI bonds. Orientation control is available through an interface to [**v**](https://github.com/briling/v) by [Ksenia Briling **@briling**](https://github.com/briling).
+Most molecular visualisation tools require manual setup: loading files into a GUI, tweaking camera angles, exporting at the right resolution and adding specific TS or NCI bonds. `xyzrender` skips this. One command gives you a (mostly) oriented, depth-cued structure with correct bond orders, aromatic ring rendering, automatic bond connectivity, with automatic TS / NCI bond detection. Orientation control is available through an interface to [**v**](https://github.com/briling/v) by [Ksenia Briling **@briling**](https://github.com/briling).
 
 ![TS bimp full nci](examples/images/bimp_nci_ts.gif)
 
@@ -24,21 +24,17 @@ Most molecular visualisation tools require manual setup: loading files into a GU
 - **Transition state bonds** — forming/breaking bonds rendered as dashed lines, detected automatically from imaginary frequency vibrations via [`graphRC`](https://github.com/aligfellow/graphRC)
 - **Stereochemistry labels** — R/S, E/Z, axial, planar (metallocene and CIP), and helical chirality labels detected and annotated automatically via [`xyzgraph`](https://github.com/aligfellow/xyzgraph)
 - **Non-covalent interactions** — hydrogen bonds and other weak interactions shown as dotted lines, detected automatically via [`xyzgraph`](https://github.com/aligfellow/xyzgraph)
-- **Bond display rules** — selectively hide or add bonds using element categories (`M`, `sbm` [s-block metal], `L`, `het`), element pairs (`M-L`, `Fe-het`), pi-coordination (`M-pi`), or atom indices
-- **GIF animations** — rotation, TS vibration, and trajectory animations for presentations
-- **Molecular orbitals** — render MO lobes from cube files with front/back depth cueing; multiple surface styles (solid, mesh, contour, wire, dot)
-- **Electron density surfaces** — depth-graded translucent isosurfaces from density cube files; contour and dot styles available
-- **Electrostatic potential (ESP)** — ESP colormapped onto the density surface from paired cube files
-- **vdW surface overlays** — van der Waals spheres on all or selected atoms
-- **Structural overlay** — RMSD-align two structures and render in contrasting colours; works across molecules with different substituents or atom counts via automatic scaffold detection
-- **Orientation reference** — `--ref` saves an orientation and reuses it across a series of derivatives with different substitution patterns, giving consistent figure panels
+- **Bond display rules** — selectively hide or add bonds using element categories (`M`, `sbm`, `L`, `het`), element pairs (`M-L`, `Fe-het`), pi-coordination (`M-pi`), or atom indices
+- **Surfaces** — molecular orbitals, electron density, ESP colormapping, NCI surfaces, and vdW spheres; solid, mesh, contour, wire, and dot styles
+- **Styling** — highlight & molecule color, radius scaling (by element, category, or index), style regions, atom property colormaps with colorbar, and depth-of-field / depth-fog effects
+- **Annotations** — distances, angles, dihedrals, custom labels, atom indices, and 3D vector arrows (dipoles, forces, fields)
+- **Structural overlay** — RMSD-align two structures and render in contrasting colours; works across different atom counts via automatic scaffold detection
 - **Conformer ensemble** — overlay all frames from a multi-frame XYZ trajectory, with palette colouring and opacity control
-- **Convex hull** — semi-transparent facets over selected atoms (e.g. aromatic ring carbons, coordination spheres); optional hull-edge lines
-- **Depth fog and gradients** — 3D depth cues without needing a 3D viewer
-- **QM input files** — render directly from Gaussian, ORCA, NWChem, Q-Chem, Psi4, MOPAC, GAMESS, Turbomole, and CP2K input files — coordinates and charge/multiplicity extracted automatically
-- **Cheminformatics formats** — mol, SDF, MOL2, PDB (with CRYST1 unit cell), SMILES (3D embedding via rdkit), and CIF (via ase) — bond connectivity read directly from file
-- **Crystal / periodic structures** — render periodic structures with unit cell box, ghost atoms, and crystallographic axis arrows (a/b/c); auto-detected from VASP POSCAR, QE pw.in, SIESTA FDF, ABINIT, CP2K, and extXYZ `Lattice=` headers
-- **Multiple output formats** — SVG (default), PNG, PDF, and GIF from the same command
+- **Convex hull, hull faces & pores** — semi-transparent facets over selected atoms or rings, exposed faces of molecular cages, and pore rendering
+- **GIF animations** — rotation, TS vibration, trajectory, diffuse/assembly, and depth-of-field animations
+- **Input formats** — XYZ, mol/SDF, MOL2, PDB, SMILES, CIF, cube files, and QM input/output from Gaussian, ORCA, NWChem, Q-Chem, Psi4, MOPAC, GAMESS, Turbomole, CP2K, VASP, Quantum ESPRESSO, SIESTA, and ABINIT
+- **Crystal / periodic structures** — unit cell box, ghost atoms, supercells, and crystallographic axis arrows; auto-detected from VASP POSCAR, QE pw.in, SIESTA FDF, ABINIT, CP2K, and extXYZ `Lattice=` headers
+- **Multiple output formats** — vector SVG (default), PNG, PDF, and GIF — all from the same command
 
 **Preconfigured but extensible.** Built-in presets (`default`, `flat`, `paton`, `skeletal`, `bubble`, `tube`, `mtube`, `wire`, `graph`) cover common use cases. Every setting — colors, radii, bond widths, gradients, fog — can be overridden via CLI flags or a custom JSON config file.
 
