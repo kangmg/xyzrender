@@ -152,6 +152,10 @@ def build_render_config(config_data: dict, cli_overrides: dict) -> RenderConfig:
     if "highlight_colors" in merged and merged["highlight_colors"] is not None:
         merged["highlight_colors"] = [resolve_color(c) for c in merged["highlight_colors"]]
 
+    # radius_scale: JSON dict {"H": 0.8, ...} → list of (selector, factor) tuples
+    if "radius_scale" in merged and isinstance(merged["radius_scale"], dict):
+        merged["radius_scale"] = [(sel, factor) for sel, factor in merged["radius_scale"].items()]
+
     # Validate surface_style
     if "surface_style" in merged and merged["surface_style"] not in ("solid", "mesh", "contour", "dot"):
         msg = f"Invalid surface_style: {merged['surface_style']!r} (must be 'solid', 'mesh', 'contour', or 'dot')"

@@ -6,9 +6,9 @@
 |---------|------|-------------------|--------|
 | ![Default](../../../examples/images/caffeine_default.svg) | ![Flat](../../../examples/images/caffeine_flat.svg) | ![Paton (PyMOL-like)](../../../examples/images/caffeine_paton.svg) | ![Bubble](../../../examples/images/caffeine_bubble.svg) |
 
-| Tube | Wire | Pmol | MTube |
-|------|------|------|-------|
-| ![Tube](../../../examples/images/caffeine_tube.svg) | ![Wire](../../../examples/images/caffeine_wire.svg) | ![Pmol](../../../examples/images/caffeine_pmol.svg) | ![MTube](../../../examples/images/caffeine_mtube.svg) |
+| Tube | Wire | Pmol | MTube | BTube |
+|------|------|------|-------|-------|
+| ![Tube](../../../examples/images/caffeine_tube.svg) | ![Wire](../../../examples/images/caffeine_wire.svg) | ![Pmol](../../../examples/images/caffeine_pmol.svg) | ![MTube](../../../examples/images/caffeine_mtube.svg) | ![BTube](../../../examples/images/caffeine_btube.svg) |
 
 ```bash
 xyzrender caffeine.xyz                        # default
@@ -18,6 +18,7 @@ xyzrender caffeine.xyz --config pmol          # pmol: ball-and-stick + element-c
 xyzrender caffeine.xyz --config bubble --hy   # space-filling-like
 xyzrender caffeine.xyz --config tube          # tube: cylinder-shaded sticks
 xyzrender caffeine.xyz --config mtube         # mtube: metal tube with edge stroke
+xyzrender caffeine.xyz --config btube         # btube: ball-and-tube with element-coloured bonds
 xyzrender caffeine.xyz --config wire          # wire: thin element-coloured lines
 ```
 

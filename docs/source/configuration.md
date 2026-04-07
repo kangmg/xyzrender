@@ -2,7 +2,7 @@
 
 ## Built-in presets
 
-Use `--config` to load a styling preset. Built-in options: `default`, `flat`, `paton`, `pmol`, `skeletal`, `bubble`, `tube`, `mtube`, `wire`, `graph`.
+Use `--config` to load a styling preset. Built-in options: `default`, `flat`, `paton`, `pmol`, `skeletal`, `bubble`, `tube`, `mtube`, `btube`, `wire`, `graph`.
 
 | Preset | Description |
 |--------|-------------|
@@ -14,6 +14,7 @@ Use `--config` to load a styling preset. Built-in options: `default`, `flat`, `p
 | `bubble` | Space-filling (CPK) — large atoms, no bonds |
 | `tube` | Tube/stick model — no atoms, thick element-coloured bonds with cylinder shading |
 | `mtube` | Metal tube — tube bonds with black edge stroke; metals auto-highlighted via preset region |
+| `btube` | Ball-and-tube — ball-and-stick atoms with element-coloured tube bonds and outline stroke |
 | `wire` | Wireframe — no atoms, thin element-coloured bonds with cylinder shading |
 | `graph` | Minimal graph look — teal bonds, bold outlined nodes with light tinted centers |
 
@@ -25,6 +26,7 @@ xyzrender caffeine.xyz --config skeletal
 xyzrender caffeine.xyz --config bubble --hy
 xyzrender caffeine.xyz --config tube
 xyzrender caffeine.xyz --config mtube
+xyzrender caffeine.xyz --config btube
 xyzrender caffeine.xyz --config wire
 xyzrender caffeine.xyz --config graph
 ```
