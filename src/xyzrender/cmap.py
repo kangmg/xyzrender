@@ -1,28 +1,20 @@
-"""Colormap utilities for --cmap atom coloring."""
+"""Colormap utilities for scalar color legends and ``--cmap`` atom coloring."""
 
 from __future__ import annotations
 
-from xyzrender.colors import CMAP_PALETTE_NAMES, CMAP_PALETTES, Color
+import numpy as np
+
+from xyzrender.colors import PALETTES, Color, palette_color
 
 
-def _interpolate(t: float, stops: list[Color]) -> Color:
-    t = max(0.0, min(1.0, float(t)))
-    n_segs = len(stops) - 1
-    seg = min(int(t * n_segs), n_segs - 1)
-    return stops[seg].blend(stops[seg + 1], t * n_segs - seg)
-
-
-def get_palette_stops(name: str) -> list[Color]:
-    """Return the color stops for a named palette, raising ValueError if unknown."""
-    try:
-        return CMAP_PALETTES[name]
-    except KeyError:
-        raise ValueError(f"Unknown cmap palette {name!r}. Available: {', '.join(CMAP_PALETTE_NAMES)}") from None
-
-
-def map_color(t: float, palette: str) -> Color:
-    """Map t ∈ [0, 1] to a color using the named palette."""
-    return _interpolate(t, get_palette_stops(palette))
+def build_palette_lut(palette: str, size: int = 256) -> np.ndarray:
+    """Return an RGB LUT sampled from a named palette."""
+    lut = np.zeros((size, 3), dtype=np.uint8)
+    scale = max(size - 1, 1)
+    for i in range(size):
+        c = palette_color(palette, i / scale)
+        lut[i] = (c.r, c.g, c.b)
+    return lut
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +33,9 @@ def atom_colors(
     """Return per-atom Color list; atoms absent from atom_cmap get unlabeled_hex."""
     unlabeled = Color.from_hex(unlabeled_hex)
     vrange = max(vmax - vmin, 1e-10)
-    return [map_color((atom_cmap[ai] - vmin) / vrange, palette) if ai in atom_cmap else unlabeled for ai in range(n)]
+    return [
+        palette_color(palette, (atom_cmap[ai] - vmin) / vrange) if ai in atom_cmap else unlabeled for ai in range(n)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -72,15 +66,14 @@ def colorbar_svg(
     label_color: str,
 ) -> list[str]:
     """Return SVG element strings for a vertical colorbar to the right of the molecule."""
-    stops = get_palette_stops(palette)
+    stops = PALETTES[palette]
 
     bar_x = mol_canvas_w + _MARGIN
     bar_h = max(min(canvas_h * 0.80, 400.0), 60.0)
     bar_top = (canvas_h - bar_h) / 2
     bar_bot = bar_top + bar_h
 
-    # Gradient: top = vmax (last stop = brightest), bottom = vmin (first stop = darkest).
-    # Stops in ascending offset order (SVG spec).
+    # Gradient: top = vmax, bottom = vmin.
     n = len(stops)
     grad_stops = "".join(
         f'<stop offset="{int(i / (n - 1) * 100)}%" stop-color="{c.hex}"/>' for i, c in enumerate(reversed(stops))

@@ -172,7 +172,6 @@ def load(
     max_frames: int | None = None,
     align_atoms: str | list[int] | None = None,
     ensemble_color: str | list[str] | None = None,
-    ensemble_palette: str | None = None,
     ensemble_opacity: float | None = None,
     reference_mol: Molecule | None = None,
 ) -> Molecule:
@@ -182,7 +181,7 @@ def load(
     ----------
     molecule:
         Path to the input file, or a SMILES string when *smiles* is ``True``.
-        Supported extensions: ``.xyz``, ``.cube``, ``.mol``, ``.sdf``,
+        Supported extensions: ``.xyz``, ``.cube``, ``.cub``, ``.mol``, ``.sdf``,
         ``.mol2``, ``.pdb``, ``.smi``, ``.cif``, and any QM output
         supported by cclib.
     smiles:
@@ -228,10 +227,10 @@ def load(
         When given, the rotation is computed from this subset only
         but applied to all atoms.
     ensemble_color:
-        Single color string or list of hex/named colors for conformers.
-    ensemble_palette:
-        Named continuous colormap (``"viridis"``, ``"spectral"``,
-        ``"coolwarm"``).  Overrides *ensemble_color*.
+        Conformer colour spec.  May be a palette name from
+        :data:`xyzrender.colors.PALETTE_NAMES` (sampled across frames),
+        a single hex/named colour (broadcast to every conformer), a
+        comma-separated list, or an explicit list of colours.
     ensemble_opacity:
         Opacity for non-reference conformer atoms (0-1).
     reference_mol:
@@ -251,13 +250,8 @@ def load(
             reference_frame=reference_frame,
             max_frames=max_frames,
             align_atoms=align_atoms,
-            conformer_colors=_resolve_ensemble_colors(
-                ensemble_color=ensemble_color,
-                ensemble_palette=None,
-                n_conformers=None,
-            ),
+            ensemble_color=ensemble_color,
             ensemble_opacity=ensemble_opacity,
-            ensemble_palette=ensemble_palette,
             charge=charge,
             multiplicity=multiplicity,
             kekule=kekule,
@@ -290,7 +284,7 @@ def load(
     elif not Path(mol_path).is_file():
         raise FileNotFoundError(f"[Errno 2] No such file or directory: '{mol_path}'")
 
-    elif mol_path.suffix.lower() == ".cube":
+    elif mol_path.suffix.lower() in {".cube", ".cub"}:
         from xyzrender.readers import load_cube
 
         graph, cube_data = load_cube(
@@ -492,6 +486,7 @@ def render(
     idx: bool | str = False,
     cmap: str | os.PathLike | dict[int, float] | None = None,
     cmap_range: tuple[float, float] | None = None,
+    cmap_palette: str | None = None,
     cmap_symm: bool = False,
     cbar: bool = False,
     # --- Annotations ---
@@ -602,6 +597,10 @@ def render(
         Atom property colour map: either a ``{1-indexed atom: value}`` dict,
         or a path to a two-column text file (index value, same format as
         ``--cmap`` in the CLI).
+    cmap_palette:
+        Shared scalar palette override for atom colormaps and ESP surfaces.
+        Defaults to ``viridis`` for ``cmap=...`` and ``rainbow`` for ESP
+        when not specified explicitly.
     labels:
         Inline annotation spec strings (e.g. ``["1 2 d", "3 a", "1 NBO"]``).
     label_file:
@@ -625,9 +624,9 @@ def render(
         Render MO lobes / density isosurface from a cube file loaded via
         :func:`load`.
     esp:
-        Path to an ESP ``.cube`` file (density iso + ESP colour map).
+        Path to an ESP ``.cube`` or ``.cub`` file (density iso + ESP colour map).
     nci:
-        Path to an NCI reduced-density-gradient ``.cube`` file.
+        Path to an NCI reduced-density-gradient ``.cube`` or ``.cub`` file.
     hull:
         ``True`` = hull over all heavy atoms; ``"rings"`` = one hull per
         aromatic ring (auto-detected from the molecular graph); a flat list
@@ -745,6 +744,7 @@ def render(
         idx=idx,
         cmap=cmap,
         cmap_range=cmap_range,
+        cmap_palette=cmap_palette,
         cmap_symm=cmap_symm,
         cbar=cbar,
         opacity=opacity,
@@ -1657,37 +1657,27 @@ def render_gif(
 
 
 def _resolve_ensemble_colors(
-    *,
     ensemble_color: str | list[str] | None,
-    ensemble_palette: str | None,
-    n_conformers: int | None,
+    n_conformers: int,
 ) -> list[str] | None:
-    """Resolve ensemble colour specification to a list of hex strings (one per conformer).
+    """Resolve ensemble colour spec to one hex string per conformer.
 
+    Accepts a palette name (sampled across *n_conformers*), a single hex /
+    named colour (broadcast), a comma-separated list, or an explicit list.
     Returns ``None`` when no colouring is requested (CPK default).
-    When *n_conformers* is ``None`` (not yet known), returns a sentinel
-    that ``_build_ensemble_molecule`` will expand after counting frames.
     """
-    if ensemble_palette is not None:
-        from xyzrender.colors import sample_palette
-
-        if n_conformers is None:
-            # Return palette name as sentinel — _build_ensemble_molecule resolves later
-            return None  # handled below in _build_ensemble_molecule
-        return sample_palette(ensemble_palette, n_conformers)
+    from xyzrender.colors import PALETTES, sample_palette
 
     if ensemble_color is None:
         return None
-
-    if isinstance(ensemble_color, str):
-        # Single colour → all non-ref conformers get this colour
-        hex_c = resolve_color(ensemble_color)
-        if n_conformers is None:
-            return [hex_c]  # single-element sentinel
-        return [hex_c] * n_conformers
-
-    # List of colours
-    return [resolve_color(c) for c in ensemble_color]
+    if isinstance(ensemble_color, list):
+        return [resolve_color(c) for c in ensemble_color]
+    if ensemble_color in PALETTES:
+        return sample_palette(ensemble_color, n_conformers)
+    parts = [c.strip() for c in ensemble_color.split(",")]
+    if len(parts) > 1:
+        return [resolve_color(c) for c in parts]
+    return [resolve_color(ensemble_color)] * n_conformers
 
 
 def _build_ensemble_molecule(
@@ -1696,9 +1686,8 @@ def _build_ensemble_molecule(
     reference_frame: int = 0,
     max_frames: int | None = None,
     align_atoms: str | list[int] | None = None,
-    conformer_colors: list[str] | None = None,
+    ensemble_color: str | list[str] | None = None,
     ensemble_opacity: float | None = None,
-    ensemble_palette: str | None = None,
     charge: int = 0,
     multiplicity: int | None = None,
     kekule: bool = False,
@@ -1815,17 +1804,8 @@ def _build_ensemble_molecule(
                 fg = _detect_nci(fg)
             conformer_graphs.append(fg)
 
-    # Resolve palette colours now that we know n_conformers.
-    # Default: None (CPK atom colours). Palette/explicit colour opt-in only.
     n_conf = len(frames)
-    if ensemble_palette is not None:
-        from xyzrender.colors import sample_palette
-
-        conformer_colors = sample_palette(ensemble_palette, n_conf)
-    elif conformer_colors is not None and len(conformer_colors) == 1:
-        # Single-colour sentinel → expand to all conformers
-        conformer_colors = conformer_colors * n_conf
-    # else: conformer_colors is None → CPK default, leave as-is
+    conformer_colors = _resolve_ensemble_colors(ensemble_color, n_conf)
 
     # Build per-conformer opacities list (None = fully opaque / use default)
     opacities: list[float | None] = [None] * n_conf
@@ -2033,6 +2013,7 @@ def _apply_render_overlays(
     idx: bool | str = False,
     cmap: str | os.PathLike | dict[int, float] | None = None,
     cmap_range: tuple[float, float] | None = None,
+    cmap_palette: str | None = None,
     cmap_symm: bool = False,
     cbar: bool = False,
     opacity: float | None = None,
@@ -2054,11 +2035,11 @@ def _apply_render_overlays(
         cfg.atom_cmap = _resolve_cmap(cmap, graph)
     if cmap_range is not None:
         cfg.cmap_range = cmap_range
+    if cmap_palette is not None:
+        cfg.cmap_palette = cmap_palette
     if cmap_symm:
         cfg.cmap_symm = True
     if cbar:
-        if cmap is None and cfg.atom_cmap is None:
-            logger.warning("cbar=True has no effect without cmap data")
         cfg.cbar = True
     if opacity is not None:
         cfg.surface_opacity = opacity
@@ -2325,16 +2306,16 @@ def _validate_and_compute_surfaces(
         msg = f"Surface flags are mutually exclusive: {', '.join(active)}"
         raise ValueError(msg)
     if mo and cube_data is None:
-        msg = "mo=True requires a .cube file loaded via load()"
+        msg = "mo=True requires a .cube or .cub file loaded via load()"
         raise ValueError(msg)
     if dens and cube_data is None:
-        msg = "dens=True requires a .cube file loaded via load()"
+        msg = "dens=True requires a .cube or .cub file loaded via load()"
         raise ValueError(msg)
     if esp is not None and cube_data is None:
-        msg = "esp= requires a density .cube file loaded via load()"
+        msg = "esp= requires a density .cube or .cub file loaded via load()"
         raise ValueError(msg)
     if nci is not None and cube_data is None:
-        msg = "nci= requires a density .cube file loaded via load()"
+        msg = "nci= requires a density .cube or .cub file loaded via load()"
         raise ValueError(msg)
 
     has_mo = bool(mo)

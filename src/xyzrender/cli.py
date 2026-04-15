@@ -54,7 +54,7 @@ _COMPACT_HELP = """\
 Usage: xyzrender [input] [options]
 
 Input/Output:
-  input                   .xyz .mol .sdf .mol2 .pdb .cif .cube .com .nw ...
+  input                   .xyz .mol .sdf .mol2 .pdb .cif .cube/.cub .com .nw ...
   -o FILE                 Output file (.svg, .png, .pdf, .tif, .tiff)
   -c N / -m N             Charge / multiplicity (for bond order detection)
   --smi SMILES            Render from SMILES string (requires rdkit)
@@ -94,7 +94,7 @@ GIF Animation:
   -go FILE / --gif-fps N  GIF output path / frames per second
 
 Surfaces:
-  --mo / --dens           MO lobes / density isosurface (.cube input)
+  --mo / --dens           MO lobes / density isosurface (.cube/.cub input)
   --esp CUBE              ESP colour mapping (density + ESP cubes)
   --nci-surf CUBE         NCI interaction surface (density + gradient cubes)
   --iso F                 Isovalue (MO: 0.05, dens: 0.001, NCI: 0.3)
@@ -146,7 +146,7 @@ def main() -> None:
     io_g.add_argument(
         "input",
         nargs="?",
-        help="Input file (.xyz, .mol, .sdf, .mol2, .pdb, .smi, .cif, .cube, "
+        help="Input file (.xyz, .mol, .sdf, .mol2, .pdb, .smi, .cif, .cube/.cub, "
         ".com, .gjf, .inp, .nw, .vasp, POSCAR, .in, …)",
     )
     io_g.add_argument("-o", "--output", help="Output file (.svg, .png, .pdf)")
@@ -263,7 +263,7 @@ def main() -> None:
 
     # --- Surfaces (MO / density / ESP) ---
     surf_g = p.add_argument_group("surfaces")
-    surf_g.add_argument("--mo", action="store_true", default=False, help="Render MO lobes from .cube input")
+    surf_g.add_argument("--mo", action="store_true", default=False, help="Render MO lobes from .cube/.cub input")
     surf_g.add_argument(
         "--mo-colors",
         nargs=2,
@@ -271,7 +271,9 @@ def main() -> None:
         metavar=("POS", "NEG"),
         help="MO lobe colors as hex or named color (default: steelblue maroon)",
     )
-    surf_g.add_argument("--dens", action="store_true", default=False, help="Render density isosurface from .cube input")
+    surf_g.add_argument(
+        "--dens", action="store_true", default=False, help="Render density isosurface from .cube/.cub input"
+    )
     surf_g.add_argument("--dens-color", default=None, help="Density surface color (hex or named, default: steelblue)")
     surf_g.add_argument(
         "--esp", default=None, metavar="CUBE", help="ESP cube file for potential coloring (implies --dens)"
@@ -401,9 +403,9 @@ def main() -> None:
         "--ensemble-color",
         default=None,
         dest="ensemble_color",
-        help="Palette (viridis, spectral, coolwarm), a single color, or comma-separated colors",
+        help="Palette name (viridis, plasma, spectral, coolwarm, RdBu, rainbow), "
+        "a single color, or comma-separated colors",
     )
-
     # --- Orientation ---
     orient_g = p.add_argument_group("orientation")
     orient_g.add_argument(
@@ -602,15 +604,15 @@ def main() -> None:
     )
     annot_g.add_argument(
         "--cmap-palette",
-        default="viridis",
+        default=None,
         metavar="NAME",
-        help="Colormap palette name (default: viridis)",
+        help="Shared scalar palette override (default: viridis for --cmap, rainbow for --esp)",
     )
     annot_g.add_argument(
         "--cbar",
         action="store_true",
         default=False,
-        help="Add a vertical colorbar on the right showing the data range",
+        help="Add a vertical colorbar on the right for --cmap or --esp data",
     )
     annot_g.add_argument(
         "--cmap-symm",
@@ -819,7 +821,7 @@ def main() -> None:
     if annotation_flags_used and wants_gif:
         logger.warning("--idx, -l and --label apply to static SVG output only and will not appear in the GIF")
 
-    is_cube = args.input and args.input.endswith(".cube")
+    is_cube = args.input and args.input.endswith((".cube", ".cub"))
 
     # Ensemble overlay is only defined for multi-frame XYZ / QM trajectories
     if args.ensemble and not args.input:
@@ -830,7 +832,6 @@ def main() -> None:
         p.error("--ensemble cannot be combined with --gif-ts or --gif-trj (use gif_rot only)")
     if args.ensemble and from_stdin:
         p.error("--ensemble cannot be used with stdin input")
-
     # Validate --smi / --mol-frame / --rebuild usage
     if args.smi and args.input:
         p.error("--smi cannot be combined with a positional input file")
@@ -994,19 +995,6 @@ def main() -> None:
     if args.anchor:
         _anchor_atoms = parse_atom_indices(args.anchor, one_indexed=True)
 
-    # --- Parse ensemble color: palette name, single color, or comma-separated list ---
-    _ens_color: str | list[str] | None = None
-    _ens_palette: str | None = None
-    if args.ensemble_color is not None:
-        from xyzrender.colors import PALETTE_NAMES
-
-        val = args.ensemble_color.strip()
-        if val in PALETTE_NAMES:
-            _ens_palette = val
-        else:
-            parts = [c.strip() for c in val.split(",")]
-            _ens_color = parts if len(parts) > 1 else parts[0]
-
     # --- Interactive viewer (operates on the reference frame only) ---
     if args.interactive:
         if args.ref is not None and Path(args.ref).is_file():
@@ -1025,8 +1013,7 @@ def main() -> None:
             args.input,
             ensemble=True,
             align_atoms=_align_atoms,
-            ensemble_color=_ens_color,
-            ensemble_palette=_ens_palette,
+            ensemble_color=args.ensemble_color,
             ensemble_opacity=args.opacity,
             rebuild=args.rebuild,
             nci_detect=args.nci_detect,
@@ -1035,7 +1022,6 @@ def main() -> None:
             kekule=args.kekule,
             reference_mol=mol,
         )
-
     # --- Crystal ghost resolution ---
     # Ghosts default: on whenever the molecule carries cell_data (auto-detected or explicit)
     _show_ghosts = args.ghosts if args.ghosts is not None else mol.cell_data is not None

@@ -68,7 +68,7 @@ Full flag reference for `xyzrender`. See also `xyzrender --help`.
 | `--overlay FILE` | Second structure to overlay (RMSD-aligned onto the primary). Different atom counts are handled automatically via shared-scaffold alignment |
 | `--overlay-color COLOR` | Color for the overlay structure (hex or named) |
 | `--ensemble` | Ensemble overlay for multi-frame XYZ trajectories; conformers default to CPK atom colours |
-| `--ensemble-color VALUE` | Palette name (`viridis`, `spectral`, `coolwarm`), a single colour, or comma-separated colours |
+| `--ensemble-color VALUE` | Palette name (`viridis`, `plasma`, `spectral`, `coolwarm`, `RdBu`, `rainbow`), a single colour, or comma-separated colours |
 | `--opacity FLOAT` | Opacity for non-reference conformers (0–1) |
 | `--align-atoms INDICES` | Atom subset for Kabsch alignment (min 3), e.g. `1,2,3`, `1-6`. Works with `--overlay` and `--ensemble` |
 
@@ -96,12 +96,12 @@ Full flag reference for `xyzrender`. See also `xyzrender --help`.
 
 | Flag | Description |
 |------|-------------|
-| `--mo` | Render MO lobes from `.cube` input |
+| `--mo` | Render MO lobes from `.cube` or `.cub` input |
 | `--mo-colors POS NEG` | MO lobe colors (hex or named) |
 | `--mo-blur SIGMA` | MO Gaussian blur sigma (default: 0.8, ADVANCED) |
 | `--mo-upsample N` | MO contour upsample factor (default: 3, ADVANCED) |
 | `--flat-mo` | Render all MO lobes as front-facing (no depth classification) |
-| `--dens` | Render density isosurface from `.cube` input |
+| `--dens` | Render density isosurface from `.cube` or `.cub` input |
 | `--dens-color` | Density surface color (default: `steelblue`) |
 | `--esp CUBE` | ESP cube file for potential coloring (implies `--dens`) |
 | `--nci-surf CUBE` | NCI gradient (RDG) cube — render NCI surface lobes |
@@ -123,8 +123,8 @@ Full flag reference for `xyzrender`. See also `xyzrender --help`.
 | `--cmap FILE` | Per-atom property colormap (1-indexed atom index, value) |
 | `--cmap-range VMIN VMAX` | Explicit colormap range (default: auto from file) |
 | `--cmap-symm` | Symmetric colormap range about zero: `[-max(|v|), +max(|v|)]` |
-| `--cmap-palette NAME` | Colormap palette (default: `viridis`) |
-| `--cbar` | Add a vertical colorbar on the right showing the data range |
+| `--cmap-palette NAME` | Shared scalar palette override (`viridis` for `--cmap`, `rainbow` for `--esp`) |
+| `--cbar` | Add a vertical colorbar on the right for `--cmap` or `--esp` |
 
 ## Vector arrows
 

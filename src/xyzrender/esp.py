@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from xyzrender.cmap import build_palette_lut
 from xyzrender.contours import (
     MIN_LOOP_PERIMETER,
     LobeContour2D,
@@ -69,49 +70,6 @@ class ESPSurface:
 
 
 # ---------------------------------------------------------------------------
-# ESP colormap — CSS4 named colors, user-changeable via presets
-# ---------------------------------------------------------------------------
-
-# (position, CSS4 color name) — most positive ESP to most negative ESP
-ESP_COLORMAP: list[tuple[float, str]] = [
-    (0.00, "midnightblue"),  # most positive ESP (electron-poor)
-    (0.25, "steelblue"),
-    (0.50, "darkseagreen"),  # neutral
-    (0.75, "peru"),
-    (1.00, "maroon"),  # most negative ESP (electron-rich)
-]
-
-
-def _build_lut(cmap: list[tuple[float, str]]) -> np.ndarray:
-    """Build a 256-entry RGB LUT from a named-color colormap."""
-    from xyzrender.colors import Color
-
-    stops = [(t, Color.from_str(name)) for t, name in cmap]
-
-    lut = np.zeros((256, 3), dtype=np.uint8)
-    for i in range(256):
-        t = i / 255.0
-        for j in range(len(stops) - 1):
-            t0, c0 = stops[j]
-            t1, c1 = stops[j + 1]
-            if t <= t1:
-                s = (t - t0) / (t1 - t0) if t1 > t0 else 0.0
-                lut[i] = (
-                    int(c0.r + s * (c1.r - c0.r)),
-                    int(c0.g + s * (c1.g - c0.g)),
-                    int(c0.b + s * (c1.b - c0.b)),
-                )
-                break
-        else:
-            c = stops[-1][1]
-            lut[i] = (c.r, c.g, c.b)
-    return lut
-
-
-_LUT = _build_lut(ESP_COLORMAP)
-
-
-# ---------------------------------------------------------------------------
 # ESP surface building
 # ---------------------------------------------------------------------------
 
@@ -121,6 +79,7 @@ def build_esp_surface(
     esp_cube: CubeData,
     params: ESPParams,
     *,
+    palette: str = "rainbow",
     rot: np.ndarray | None = None,
     atom_centroid: np.ndarray | None = None,
     target_centroid: np.ndarray | None = None,
@@ -325,11 +284,11 @@ def build_esp_surface(
         esp_vmin = float(np.percentile(esp_above, 5))
         esp_vmax = float(np.percentile(esp_above, 95))
 
-    # Zero-centered normalization: ESP=0 → t=0.5 (green/neutral).
-    # Positive ESP (electron-poor) → t<0.5 → blue.
-    # Negative ESP (electron-rich) → t>0.5 → red.
-    half_range = max(abs(esp_vmin), abs(esp_vmax), 1e-10)
-    esp_norm = np.clip(0.5 - up_esp / (2 * half_range), 0.0, 1.0)
+    # Normalize across the projected ESP range used for the colorbar so the
+    # rendered surface and legend describe the same field.
+    esp_span = max(esp_vmax - esp_vmin, 1e-10)
+    esp_norm = np.clip((up_esp - esp_vmin) / esp_span, 0.0, 1.0)
+    lut = build_palette_lut(palette)
 
     surface_mask = up_dens > isovalue * 0.5
     lut_idx = np.where(surface_mask, (esp_norm * 255).astype(np.uint8), 0)
@@ -355,7 +314,7 @@ def build_esp_surface(
     for ch in range(3):
         rgb_f[:, :, ch] = np.where(
             surface_mask,
-            _LUT[lut_idx, ch].astype(float),
+            lut[lut_idx, ch].astype(float),
             255.0,
         )
     gray = np.where(
