@@ -346,13 +346,12 @@ def load(
     return Molecule(graph=graph, cube_data=cube_data, cell_data=cell_data)
 
 
-def orient(mol: Molecule, also: list[Molecule] | None = None) -> None:
-    """Open molecule in v viewer to set orientation interactively.
+def orient(mol: Molecule, viewer: str = "vmol", also: list[Molecule] | None = None) -> None:
+    """Open molecule in an interactive viewer to set orientation interactively.
 
-    The user rotates the molecule and presses ``z`` to output coordinates,
-    then ``q`` to quit.  Atom positions are written back to ``mol.graph``
-    in-place.  Sets ``mol.oriented = True`` so subsequent :func:`render`
-    calls skip PCA auto-orientation.
+    Atom positions are written back to ``mol.graph`` in-place.  Sets
+    ``mol.oriented = True`` so subsequent :func:`render` calls skip PCA
+    auto-orientation.
 
     For cube-file molecules the cube grid alignment is handled automatically
     at render time via Kabsch rotation from original cube atom positions to
@@ -362,6 +361,11 @@ def orient(mol: Molecule, also: list[Molecule] | None = None) -> None:
     ----------
     mol:
         Molecule returned by :func:`load`.
+    viewer:
+        Viewer backend: ``"vmol"`` (default, requires vmol) or ``"ase"``
+        (requires ase).  For vmol, rotate with the mouse/arrows then press
+        ``z`` to confirm and ``q`` to quit.  For ASE GUI, rotate then close
+        the window to confirm.
     also:
         Optional list of additional Molecules that should receive the same
         rigid rotation about *mol*'s centroid.  Use this for overlay structures
@@ -370,7 +374,7 @@ def orient(mol: Molecule, also: list[Molecule] | None = None) -> None:
     """
     from xyzrender.viewer import rotate_with_viewer
 
-    rot, c1, c2 = rotate_with_viewer(mol.graph)
+    rot, c1, c2 = rotate_with_viewer(mol.graph, backend=viewer)
     if rot is None:
         logger.warning("orient(): no orientation received from viewer; mol.oriented not set")
         return
