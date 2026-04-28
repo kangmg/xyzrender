@@ -450,13 +450,60 @@ def _tile_supercell_indices(
 ) -> list[list[int]]:
     """Replicate index subsets across supercell replicas."""
     sc_m, sc_n, sc_l = supercell
-    return [
-        [idx + (ii * sc_n * sc_l + jj * sc_l + kk) * n_base for idx in sub]
-        for ii in range(sc_m)
-        for jj in range(sc_n)
-        for kk in range(sc_l)
-        for sub in subsets
-    ]
+    if not subsets or (sc_m, sc_n, sc_l) == (1, 1, 1):
+        return subsets
+
+    ii, jj, kk = np.mgrid[0:sc_m, 0:sc_n, 0:sc_l]
+    offsets = (ii * sc_n * sc_l + jj * sc_l + kk).ravel() * n_base
+
+    lens = list(map(len, subsets))
+    flat_subs = np.concatenate(subsets)
+    tiled_flat = (flat_subs[None, :] + offsets[:, None]).ravel()
+    split_idx = np.cumsum(np.tile(lens, len(offsets)))[:-1]
+    return list(map(np.ndarray.tolist, np.split(tiled_flat, split_idx)))
+
+
+def _tile_pore_centroids_radii(
+    centroids: list[tuple[float, float, float]],
+    radii: list[float] | None,
+    supercell: tuple[int, int, int],
+    lattice: np.ndarray,
+) -> tuple[list[tuple[float, float, float]], list[float] | None]:
+    """Tile pore centroids and radii across supercell replicas.
+
+    Parameters
+    ----------
+    centroids : list[tuple[float, float, float]]
+        Original pore centroids (unit cell).
+    radii : list[float] | None
+        Original pore radii (unit cell).
+    supercell : tuple[int, int, int]
+        Supercell repetition counts (m, n, l).
+    lattice : np.ndarray
+        Lattice vectors as (3, 3) array with rows = a, b, c.
+
+    Returns
+    -------
+    tuple
+        (tiled_centroids, tiled_radii) where tiled_radii is None if input was None.
+    """
+    m_sc, n_sc, l_sc = supercell
+    if not centroids or (m_sc, n_sc, l_sc) == (1, 1, 1):
+        return centroids, radii
+
+    from xyzrender.pore import _tile_positions
+
+    c_arr = np.array(centroids, dtype=float)
+    shifts, tiled_arr = _tile_positions(
+        c_arr,
+        lattice,
+        ((0, m_sc), (0, n_sc), (0, l_sc)),
+    )
+
+    tiled_c = [tuple(pt) for pt in tiled_arr.reshape(-1, 3)]
+    tiled_r = radii * shifts.shape[0] if radii is not None else None
+
+    return tiled_c, tiled_r
 
 
 def render(
@@ -1084,21 +1131,13 @@ def render(
                 cfg.pore_node_ids = _tile_supercell_indices(cfg.pore_node_ids, supercell, _unit_cell_n_base)
                 if cfg.pore_centroids:
                     _lat = np.array(mol.cell_data.lattice) if mol.cell_data else None
-                    m_sc, n_sc, l_sc = supercell
-                    tiled_c: list[tuple[float, float, float]] = []
-                    tiled_r: list[float] = []
-                    for ii in range(m_sc):
-                        for jj in range(n_sc):
-                            for kk in range(l_sc):
-                                shift = _lat[0] * ii + _lat[1] * jj + _lat[2] * kk if _lat is not None else np.zeros(3)
-                                for si in range(len(cfg.pore_centroids)):
-                                    c = np.array(cfg.pore_centroids[si]) + shift
-                                    tiled_c.append((float(c[0]), float(c[1]), float(c[2])))
-                                    if cfg.pore_radii:
-                                        tiled_r.append(cfg.pore_radii[si])
-                    cfg.pore_centroids = tiled_c
-                    if tiled_r:
-                        cfg.pore_radii = tiled_r
+                    if _lat is not None:
+                        cfg.pore_centroids, cfg.pore_radii = _tile_pore_centroids_radii(
+                            cfg.pore_centroids,
+                            cfg.pore_radii,
+                            supercell,
+                            _lat,
+                        )
             cfg.pore_spheres = True
         if pore_color is not None:
             cfg.pore_sphere_color = pore_color
@@ -1453,21 +1492,12 @@ def render_gif(
                     cfg.pore_node_ids = _tile_supercell_indices(cfg.pore_node_ids, supercell, _n_base)
                     if cfg.pore_centroids and _cd is not None:
                         _lat = np.array(_cd.lattice)
-                        m_sc, n_sc, l_sc = supercell
-                        tc: list[tuple[float, float, float]] = []
-                        tr: list[float] = []
-                        for ii in range(m_sc):
-                            for jj in range(n_sc):
-                                for kk in range(l_sc):
-                                    shift = _lat[0] * ii + _lat[1] * jj + _lat[2] * kk
-                                    for si in range(len(cfg.pore_centroids)):
-                                        c = np.array(cfg.pore_centroids[si]) + shift
-                                        tc.append((float(c[0]), float(c[1]), float(c[2])))
-                                        if cfg.pore_radii:
-                                            tr.append(cfg.pore_radii[si])
-                        cfg.pore_centroids = tc
-                        if tr:
-                            cfg.pore_radii = tr
+                        cfg.pore_centroids, cfg.pore_radii = _tile_pore_centroids_radii(
+                            cfg.pore_centroids,
+                            cfg.pore_radii,
+                            supercell,
+                            _lat,
+                        )
                 cfg.pore_spheres = True
             if pore_color is not None:
                 cfg.pore_sphere_color = pore_color
