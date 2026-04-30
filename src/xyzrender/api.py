@@ -1163,6 +1163,7 @@ def render_gif(
     molecule: str | os.PathLike | Molecule,
     *,
     gif_rot: str | None = None,
+    gif_bounce: float | tuple[float, str] | None = None,
     gif_trj: bool = False,
     gif_ts: bool = False,
     gif_diffuse: bool = False,
@@ -1279,7 +1280,7 @@ def render_gif(
     The result displays the GIF inline in Jupyter via ``_repr_html_``.
     Access the file path via ``result.path``.
 
-    At least one of *gif_rot*, *gif_trj*, *gif_ts* must be set.
+    At least one of *gif_rot*, *gif_bounce*, *gif_trj*, *gif_ts*, or *gif_diffuse* must be set.
 
     Parameters
     ----------
@@ -1292,6 +1293,11 @@ def render_gif(
         …), or a 3-digit Miller index (``"111"``).
     gif_trj:
         Trajectory animation — *molecule* must be a multi-frame XYZ.
+    gif_bounce:
+        Bounce rotation GIF. Either an amplitude in degrees (axis defaults
+        to ``"y"``) or a ``(degrees, axis)`` tuple — e.g. ``50`` or
+        ``(50, "xy")``. *axis* uses the same vocabulary as *gif_rot*.
+        Mutually exclusive with *gif_rot*.
     gif_ts:
         Transition-state vibration animation (requires ``xyzrender[ts]``).
     output:
@@ -1320,8 +1326,13 @@ def render_gif(
         render_vibration_rotation_gif,
     )
 
-    if not (gif_rot or gif_trj or gif_ts or gif_diffuse):
-        msg = "render_gif: set gif_rot, gif_trj=True, gif_ts=True, or gif_diffuse=True"
+    if isinstance(gif_bounce, tuple):
+        bounce_deg, bounce_ax = gif_bounce
+    else:
+        bounce_deg, bounce_ax = gif_bounce, None
+
+    if not (gif_rot or bounce_deg is not None or gif_trj or gif_ts or gif_diffuse):
+        msg = "render_gif: set gif_rot, gif_bounce, gif_trj=True, gif_ts=True, or gif_diffuse=True"
         raise ValueError(msg)
 
     if gif_ts and gif_trj:
@@ -1331,6 +1342,19 @@ def render_gif(
     if gif_diffuse and (gif_ts or gif_trj):
         msg = "render_gif: gif_diffuse is mutually exclusive with gif_ts / gif_trj"
         raise ValueError(msg)
+
+    if bounce_deg is not None:
+        if bounce_deg <= 0:
+            msg = "render_gif: gif_bounce must be > 0"
+            raise ValueError(msg)
+        if gif_ts or gif_trj or gif_diffuse:
+            msg = "render_gif: gif_bounce is mutually exclusive with gif_ts / gif_trj / gif_diffuse"
+            raise ValueError(msg)
+        if gif_rot:
+            msg = (
+                "render_gif: gif_bounce and gif_rot are mutually exclusive — use gif_bounce=(deg, axis) to set the axis"
+            )
+            raise ValueError(msg)
 
     if (mo or dens) and (gif_ts or gif_trj or gif_diffuse):
         active_surf = "mo" if mo else "dens"
@@ -1354,13 +1378,15 @@ def render_gif(
         msg = "render_gif: skeletal_style is not supported with GIF rendering"
         raise ValueError(msg)
 
-    if gif_rot and gif_rot not in ROTATION_AXES:
-        test = gif_rot.lstrip("-")
+    for _name, _ax in (("gif_rot", gif_rot), ("gif_bounce axis", bounce_ax)):
+        if not _ax or _ax in ROTATION_AXES:
+            continue
+        test = _ax.lstrip("-")
         if not (test.isdigit() and len(test) >= 3):
-            msg = f"render_gif: invalid gif_rot {gif_rot!r} — use 'x', 'y', 'z', or 3-digit Miller index"
+            msg = f"render_gif: invalid {_name} {_ax!r} — use 'x', 'y', 'z', or 3-digit Miller index"
             raise ValueError(msg)
 
-    if rot_frames != 120 and not gif_rot:
+    if rot_frames != 120 and not gif_rot and bounce_deg is None:
         logger.warning("rot_frames has no effect without gif_rot")
 
     # Resolve config
@@ -1757,7 +1783,8 @@ def render_gif(
             str(gif_path),
             n_frames=rot_frames,
             fps=gif_fps,
-            axis=gif_rot or "y",
+            axis=bounce_ax or gif_rot or "y",
+            bounce_degrees=float(bounce_deg) if bounce_deg is not None else None,
             mo_params=mo_params,
             mo_cube=cube_data if mo_params is not None else None,
             dens_params=dens_params,
