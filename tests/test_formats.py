@@ -406,6 +406,43 @@ class TestQmInputs:
         assert mult == 2
 
 
+class TestTrajectoryDiagnostic:
+    """cclib trajectory loading must log a clear diagnostic so users can
+    distinguish upstream cclib issues from xyzrender issues."""
+
+    def test_diagnostic_multistep(self, caplog):
+        import logging
+
+        from xyzrender.readers import load_trajectory_frames
+
+        path = _STRUCTURES / "bimp.out"
+        if not path.exists():
+            pytest.skip(f"Missing test file: {path}")
+        with caplog.at_level(logging.INFO, logger="xyzrender.readers"):
+            frames = load_trajectory_frames(str(path))
+        msgs = [r.getMessage() for r in caplog.records]
+        assert any(f"parsed {len(frames)} frame(s)" in m for m in msgs)
+        assert any("parser=ORCA" in m for m in msgs)
+        # multi-step file: no single-frame warning expected
+        assert not any("may not contain the expected multistep data" in m for m in msgs)
+
+    def test_diagnostic_single_frame_warning(self, caplog):
+        import logging
+
+        from xyzrender.readers import load_trajectory_frames
+
+        path = _STRUCTURES / "sn2.out"
+        if not path.exists():
+            pytest.skip(f"Missing test file: {path}")
+        with caplog.at_level(logging.INFO, logger="xyzrender.readers"):
+            frames = load_trajectory_frames(str(path))
+        msgs = [r.getMessage() for r in caplog.records]
+        assert any("parsed" in m and "frame(s)" in m for m in msgs)
+        # sn2.out triggers the single-frame warning (cclib 1.8.1 + this ORCA file)
+        if len(frames) <= 1:
+            assert any("may not contain the expected multistep data" in m for m in msgs)
+
+
 class TestQeSniff:
     """Test QE vs Q-Chem disambiguation for .in files."""
 
