@@ -311,7 +311,7 @@ def test_render_gif_rot_applies_vector_color(tmp_path):
 
 def test_render_gif_rot_applies_surface_overrides(tmp_path):
     """--mo-pos-color / --mo-neg-color / --mo-upsample / --flat-mo / --dens-color
-    must reach collect_surf_overrides when gif_rot is the only mode."""
+    must reach build_surface_params when gif_rot is the only mode."""
     from unittest.mock import patch
 
     from xyzrender.api import render_gif
@@ -319,16 +319,15 @@ def test_render_gif_rot_applies_surface_overrides(tmp_path):
     mol = _tiny_molecule()
     mol.cube_data = object()  # truthy; consumers are patched below
 
-    captured_kwargs: dict = {}
+    captured: dict = {}
 
-    def _capture(**kw):
-        captured_kwargs.update(kw)
-        return {}
+    def _capture(cfg, overrides, **_):
+        captured["overrides"] = overrides
+        return (None, None, None, None)
 
     cm_rot, _ = _capture_rotation_cfg()
     with (
-        patch("xyzrender.config.collect_surf_overrides", side_effect=_capture),
-        patch("xyzrender.config.build_surface_params", return_value=(None, None, None, None)),
+        patch("xyzrender.config.build_surface_params", side_effect=_capture),
         cm_rot,
     ):
         render_gif(
@@ -342,11 +341,12 @@ def test_render_gif_rot_applies_surface_overrides(tmp_path):
             dens_color="grey",
             output=str(tmp_path / "x.gif"),
         )
-    assert captured_kwargs.get("mo_pos_color") == "cyan"
-    assert captured_kwargs.get("mo_neg_color") == "magenta"
-    assert captured_kwargs.get("mo_upsample") == 2
-    assert captured_kwargs.get("flat_mo") is True
-    assert captured_kwargs.get("dens_color") == "grey"
+    o = captured["overrides"]
+    assert o.mo_pos_color == "cyan"
+    assert o.mo_neg_color == "magenta"
+    assert o.mo_upsample == 2
+    assert o.flat_mo is True
+    assert o.dens_color == "grey"
 
 
 def test_render_gif_rot_applies_overlay_config_without_overlay_kwarg(tmp_path):

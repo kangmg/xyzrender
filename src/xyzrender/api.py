@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from xyzrender.types import CellData, VectorArrow
 
 from xyzrender.colors import resolve_color
+from xyzrender.config import SurfaceOverrides
 from xyzrender.types import GIFResult, OverlayConfig, RenderConfig, SVGResult
 from xyzrender.utils import parse_atom_indices
 
@@ -1168,16 +1169,17 @@ def render(
         esp=esp,
         nci=nci,
         vdw=vdw,
-        iso=iso,
-        mo_pos_color=mo_pos_color,
-        mo_neg_color=mo_neg_color,
-        mo_blur=mo_blur,
-        mo_upsample=mo_upsample,
-        flat_mo=flat_mo,
-        dens_color=dens_color,
-        nci_mode=nci_mode,
-        nci_cutoff=nci_cutoff,
-        surface_style=surface_style,
+        overrides=SurfaceOverrides(
+            iso=iso,
+            mo_pos_color=mo_pos_color,
+            mo_neg_color=mo_neg_color,
+            mo_blur=mo_blur,
+            mo_upsample=mo_upsample,
+            flat_mo=flat_mo,
+            dens_color=dens_color,
+            nci_mode=nci_mode,
+            nci_cutoff=nci_cutoff,
+        ),
     )
 
     # --- Bond rules (unbond / bond / haptic) ---
@@ -1768,18 +1770,22 @@ def render_gif(
         cube_data = mol_obj.cube_data if mol_obj is not None else None
         mo_p = dens_p = None
         if cube_data is not None and (mo or dens):
-            from xyzrender.config import build_surface_params, collect_surf_overrides
+            from xyzrender.config import build_surface_params
 
-            surf_overrides = collect_surf_overrides(
-                iso=iso,
-                mo_pos_color=mo_pos_color,
-                mo_neg_color=mo_neg_color,
-                mo_blur=mo_blur,
-                mo_upsample=mo_upsample,
-                flat_mo=flat_mo,
-                dens_color=dens_color,
+            mo_p, dens_p, _, _ = build_surface_params(
+                cfg,
+                SurfaceOverrides(
+                    iso=iso,
+                    mo_pos_color=mo_pos_color,
+                    mo_neg_color=mo_neg_color,
+                    mo_blur=mo_blur,
+                    mo_upsample=mo_upsample,
+                    flat_mo=flat_mo,
+                    dens_color=dens_color,
+                ),
+                has_mo=mo,
+                has_dens=dens,
             )
-            mo_p, dens_p, _, _ = build_surface_params(cfg, surf_overrides, has_mo=mo, has_dens=dens)
 
         render_rotation_gif(
             graph=ref_graph,
@@ -2732,16 +2738,7 @@ def _validate_and_compute_surfaces(
     esp: "str | os.PathLike | None",
     nci: "str | os.PathLike | None",
     vdw: "bool | list[int] | None",
-    iso: float | None,
-    mo_pos_color: str | None,
-    mo_neg_color: str | None,
-    mo_blur: float | None,
-    mo_upsample: int | None,
-    flat_mo: bool,
-    dens_color: str | None,
-    nci_mode: str | None,
-    nci_cutoff: float | None,
-    surface_style: str | None,
+    overrides: SurfaceOverrides,
 ) -> None:
     """Validate surface flag combinations and compute active surfaces.
 
@@ -2749,9 +2746,9 @@ def _validate_and_compute_surfaces(
     cube data availability, builds surface params, and runs the compute
     functions that populate *cfg* with contour data.
     """
-    from xyzrender.config import build_surface_params, collect_surf_overrides
+    from xyzrender.config import build_surface_params
 
-    iso_was_explicit = iso is not None
+    iso_was_explicit = overrides.iso is not None
 
     # --- Skeletal-style validation ---
     if cfg.skeletal_style:
@@ -2796,21 +2793,9 @@ def _validate_and_compute_surfaces(
     if not (has_mo or has_dens or has_esp or has_nci):
         return
 
-    surf_overrides = collect_surf_overrides(
-        iso=iso,
-        mo_pos_color=mo_pos_color,
-        mo_neg_color=mo_neg_color,
-        mo_blur=mo_blur,
-        mo_upsample=mo_upsample,
-        flat_mo=flat_mo,
-        dens_color=dens_color,
-        nci_mode=nci_mode,
-        nci_cutoff=nci_cutoff,
-    )
-
     mo_params, dens_params, esp_params, nci_params = build_surface_params(
         cfg,
-        surf_overrides,
+        overrides,
         has_mo=has_mo,
         has_dens=has_dens,
         has_esp=has_esp,
