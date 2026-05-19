@@ -653,6 +653,112 @@ def test_hull_list_input_no_crash():
     assert cfg.hull_atom_indices is not None
 
 
+def test_render_hull_pore_with_pore_color_kwarg_propagates_to_cfg():
+    """Public-API regression for PR #126: `render(mol, hull='pore', pore_color='X')`
+    (no `pore=True`) must reach `cfg.pore_sphere_color`. Same bug as the helper-direct
+    test below, captured at the user-facing layer so the test runs on both `main`
+    (passes) and `integration` (fails) without needing a `_apply_hull_pore_workflow`
+    import."""
+    from unittest.mock import patch
+
+    import xyzrender as xr
+
+    mol = _load("buckyball.xyz")  # known to produce exactly 1 pore (see test_buckyball_cage_pore)
+
+    captured: dict = {}
+
+    def _spy(graph, cfg, **_kwargs):
+        captured["color"] = cfg.pore_sphere_color
+        captured["opacity"] = cfg.pore_sphere_opacity
+        captured["pore_node_ids"] = cfg.pore_node_ids
+        return "<svg/>"
+
+    with patch("xyzrender.renderer.render_svg", side_effect=_spy):
+        xr.render(mol, hull="pore", pore_color="#ff00ff", pore_opacity=0.42)
+
+    assert captured.get("pore_node_ids"), "hull='pore' didn't populate cfg.pore_node_ids"
+    assert captured["color"] == "#ff00ff", (
+        "render(hull='pore', pore_color=X) silently dropped the colour — see PR #126 "
+        "regression in _apply_hull_pore_workflow (api.py:540)."
+    )
+    assert captured["opacity"] == pytest.approx(0.42), (
+        "render(hull='pore', pore_opacity=Y) silently dropped the opacity — same root cause."
+    )
+
+
+def test_apply_hull_pore_workflow_hull_pore_propagates_pore_color():
+    """`render(hull='pore', pore_color=X, pore_opacity=Y)` (no `pore=True`) must reach
+    cfg.pore_sphere_color / cfg.pore_sphere_opacity (regression for PR #126).
+
+    `_apply_hull_pore_workflow` computed `has_pores = pore or bool(cfg.pore_node_ids)`
+    BEFORE `resolve_hull_pores` mutated `cfg.pore_node_ids`, so the color/opacity
+    writes guarded by `if has_pores and …` got skipped for the `hull='pore'`-only path.
+
+    Helper-direct variant — skipped on branches that don't carry the helper
+    (e.g. `main` before PR #126). The public-API equivalent above
+    (`test_render_hull_pore_with_pore_color_kwarg_propagates_to_cfg`) covers
+    the same bug at the user-facing layer and runs on all branches.
+    """
+    from unittest.mock import patch
+
+    import networkx as nx
+
+    import xyzrender.api as _api_mod
+
+    if not hasattr(_api_mod, "_apply_hull_pore_workflow"):
+        pytest.skip("_apply_hull_pore_workflow doesn't exist on this branch (pre-PR #126)")
+
+    _apply_hull_pore_workflow = _api_mod._apply_hull_pore_workflow
+    from xyzrender.types import RenderConfig
+
+    g = nx.Graph()
+    for i in range(6):
+        g.add_node(i, symbol="C", position=(float(i), 0.0, 0.0))
+    for i in range(5):
+        g.add_edge(i, i + 1)
+
+    cfg = RenderConfig()
+
+    # Stub resolve_hull_pores so we don't need a real porous fixture — what we're
+    # testing is that *after* it populates cfg.pore_node_ids, downstream writes
+    # (color, opacity) actually fire.
+    def _fake_resolve_hull_pores(graph, cfg_in, **_kwargs):
+        cfg_in.pore_node_ids = [[0, 1, 2, 3, 4, 5]]
+        cfg_in.pore_centroids = [(2.5, 0.0, 0.0)]
+        cfg_in.pore_radii = [1.0]
+        return [[0, 1, 2, 3, 4, 5]]
+
+    with patch("xyzrender.hull.resolve_hull_pores", side_effect=_fake_resolve_hull_pores):
+        _apply_hull_pore_workflow(
+            cfg,
+            g,
+            hull="pore",
+            hull_color=None,
+            hull_opacity=None,
+            hull_edge=None,
+            hull_edge_width_ratio=None,
+            hull_color_type="type",
+            pore=False,
+            pore_color="#ff00ff",
+            pore_opacity=0.42,
+            supercell=(1, 1, 1),
+            ring_max_size=100,
+            ring_min_size=3,
+            face_planarity=0.25,
+            cell_data=None,
+        )
+
+    assert cfg.pore_sphere_color == "#ff00ff", (
+        "hull='pore' + pore_color silently dropped — `has_pores` was evaluated before "
+        "resolve_hull_pores mutated cfg.pore_node_ids"
+    )
+    assert cfg.pore_sphere_opacity == pytest.approx(0.42), (
+        "hull='pore' + pore_opacity silently dropped — same root cause as pore_color above"
+    )
+    # And cfg.pore_spheres should be on so the spheres actually render.
+    assert cfg.pore_spheres is True
+
+
 def test_apply_hull_pore_workflow_subset_list_not_string_mode():
     """CLI --hull 1-6 passes list[list[int]]; workflow must not treat it like 'faces'."""
     import networkx as nx

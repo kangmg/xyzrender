@@ -518,3 +518,56 @@ def test_orient_hkl_cell_corotates_with_ghost_atoms(vasp_crystal):
     frac = np.linalg.solve(cell_data.lattice.T, com - cell_data.cell_origin)
     assert np.all(frac > -0.5), f"COM fractional coords {frac} are far outside the cell after rotation"
     assert np.all(frac < 1.5), f"COM fractional coords {frac} are far outside the cell after rotation"
+
+
+def test_apply_axis_angle_rotation_keeps_ghost_atoms_with_parent_offset():
+    """After rotation, each ghost atom's offset from its source atom must equal the
+    pre-rotation offset rotated by the same matrix (i.e. ghosts move rigidly with
+    their source). Catches a class of bug where ghosts get treated as independent
+    atoms during rotation rather than rigid extensions of their unit-cell parent."""
+    import networkx as nx
+
+    from xyzrender.crystal import _add_crystal_images_generic
+    from xyzrender.types import CellData
+    from xyzrender.utils import apply_axis_angle_rotation
+
+    # Tight periodic chain — two carbons inside a 1.5 Å cell so the
+    # nearest-image bond crosses every face → guaranteed ghost atoms.
+    g = nx.Graph()
+    g.add_node(0, symbol="C", position=(0.2, 0.2, 0.2))
+    g.add_node(1, symbol="C", position=(0.5, 0.5, 0.5))
+    g.add_edge(0, 1, bond_order=1.0)
+    lat = np.array([[1.5, 0.0, 0.0], [0.0, 1.5, 0.0], [0.0, 0.0, 1.5]], dtype=float)
+    g.graph["lattice"] = lat
+    g.graph["lattice_origin"] = np.zeros(3)
+    cell = CellData(lattice=lat.copy(), cell_origin=np.zeros(3))
+    _add_crystal_images_generic(g, cell)
+
+    ghosts = [n for n in g.nodes() if g.nodes[n].get("image", False)]
+    if not ghosts:
+        pytest.skip("Periodic chain fixture failed to produce ghost atoms")
+
+    offsets_before = {}
+    for gh in ghosts:
+        src = g.nodes[gh]["source"]
+        offsets_before[gh] = np.asarray(g.nodes[gh]["position"], dtype=float) - np.asarray(
+            g.nodes[src]["position"], dtype=float
+        )
+
+    axis = np.array([1.0, 2.0, -1.0]) / np.sqrt(6.0)
+    angle = 47.0
+    apply_axis_angle_rotation(g, axis, angle)
+
+    theta = np.radians(angle)
+    c, s = np.cos(theta), np.sin(theta)
+    k = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    rot = c * np.eye(3) + s * k + (1 - c) * np.outer(axis, axis)
+
+    for gh, off_before in offsets_before.items():
+        src = g.nodes[gh]["source"]
+        off_after = np.asarray(g.nodes[gh]["position"], dtype=float) - np.asarray(g.nodes[src]["position"], dtype=float)
+        expected = rot @ off_before
+        assert np.allclose(off_after, expected, atol=1e-9), (
+            f"Ghost atom {gh} (source={src}) drifted relative to its source under rotation. "
+            f"expected offset={expected.tolist()}, got={off_after.tolist()}"
+        )

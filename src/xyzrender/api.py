@@ -537,7 +537,7 @@ def _apply_hull_pore_workflow(
     is_face = isinstance(hull, str) and hull in {"face", "faces"}
     is_pore = isinstance(hull, str) and hull in {"pore", "pores"}
     is_supercell = supercell != (1, 1, 1)
-    has_pores = pore or bool(cfg.pore_node_ids)
+    has_pores = pore or is_pore or bool(cfg.pore_node_ids)
     unit_cell_hull_indices = None
 
     # 2. Resolve Faces / Pores
@@ -1284,6 +1284,7 @@ def render_gif(
     overlay_color: str | None = None,
     overlay_config: "OverlayConfig | None" = None,
     auto_align: bool | None = None,
+    align_atoms: str | list[int] | None = None,
     # Applies to the overlay molecule (gif_rot only); mutually exclusive with surfaces.
     opacity: float | None = None,
     # --- Orientation reference (gif_ts / gif_trj: graph after orient()) ---
@@ -1586,18 +1587,11 @@ def render_gif(
         raise ValueError(msg)
 
     # --- Dispatch ---
-    from xyzrender.readers import load_molecule
-
-    # Determine the primary reference graph
-    if ref_graph is None:
-        ref_graph, _ = load_molecule(str(mol_path))
-    else:
-        ref_graph = copy.deepcopy(ref_graph)
-
     # Cache for frequent checks
     mol_obj = molecule if isinstance(molecule, Molecule) else None
 
     if gif_ts:
+        # render_vibration_gif reads mol_path directly — no ref_graph load needed.
         render_vibration_gif(
             path=str(mol_path),
             config=cfg,
@@ -1612,7 +1606,15 @@ def render_gif(
         logger.info("GIF written to %s", gif_path)
         return GIFResult(gif_path)
 
-    elif gif_trj:
+    # All remaining branches need ref_graph.
+    if ref_graph is None:
+        from xyzrender.readers import load_molecule
+
+        ref_graph, _ = load_molecule(str(mol_path))
+    else:
+        ref_graph = copy.deepcopy(ref_graph)
+
+    if gif_trj:
         from xyzrender.readers import load_trajectory_frames
 
         frames = load_trajectory_frames(str(mol_path))
@@ -1675,11 +1677,12 @@ def render_gif(
             )
 
         # Overlay & Bond Rules
+        if overlay_config is not None:
+            cfg.overlay = overlay_config
+        if auto_align is not None:
+            cfg.auto_align = auto_align
+
         if overlay is not None:
-            if overlay_config is not None:
-                cfg.overlay = overlay_config
-            if auto_align is not None:
-                cfg.auto_align = auto_align
             _prev_auto = cfg.auto_orient
             cfg.auto_orient = False
             base_mol = mol_obj if mol_obj is not None else Molecule(graph=ref_graph)
@@ -1690,7 +1693,7 @@ def render_gif(
                 overlay,
                 overlay_color=overlay_color,
                 overlay_opacity=opacity,
-                align_atoms=None,
+                align_atoms=align_atoms,
                 has_surfaces=False,
             ).graph
             cfg.auto_orient = _prev_auto
