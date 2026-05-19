@@ -106,7 +106,17 @@ def _orient_frames(frames: list[dict], vt: np.ndarray) -> list[dict]:
     for frame in frames:
         pos = np.array(frame["positions"])
         centered = pos - pos.mean(axis=0)
-        oriented.append({"symbols": frame["symbols"], "positions": (centered @ vt.T).tolist()})
+        new_frame = {
+            "symbols": frame["symbols"],
+            "positions": (centered @ vt.T).tolist(),
+        }
+        if "graph" in frame:
+            new_frame["graph"] = frame["graph"]
+        if "bond_opacities" in frame:
+            new_frame["bond_opacities"] = frame["bond_opacities"]
+        if "hull_opacity_factor" in frame:
+            new_frame["hull_opacity_factor"] = frame["hull_opacity_factor"]
+        oriented.append(new_frame)
     return oriented
 
 
@@ -133,6 +143,15 @@ if TYPE_CHECKING:
 
     from xyzrender.cube import CubeData
     from xyzrender.types import DensParams, MOParams, RenderConfig
+
+
+def _copy_ts_nci_attrs(target: "nx.Graph", reference: "nx.Graph") -> None:
+    """Copy TS/NCI/bond_type edge attributes from reference onto target where edges exist."""
+    for u, v, d in reference.edges(data=True):
+        if target.has_edge(u, v):
+            for attr in ("TS", "NCI", "bond_type"):
+                if attr in d:
+                    target[u][v][attr] = d[attr]
 
 
 def render_vibration_gif(
@@ -431,11 +450,14 @@ def render_trajectory_gif(
     detect_nci: bool = False,
     axis: str | None = None,
     kekule: bool = False,
+    trj_bonds: bool = False,
 ) -> None:
     """Render optimization/trajectory path as an animated GIF.
 
     Builds the molecular graph once from the last frame (optimized geometry)
     to get correct bond orders, then updates positions per frame.
+    If ``trj_bonds`` is True, builds a fresh graph for every frame so
+    that changing connectivity (e.g. NEB-TS MEPs) is shown correctly.
     If ``reference_graph`` is provided, all frames are rotated to match.
     If ``detect_nci`` is True, NCI interactions are re-detected per frame
     using xyzgraph's NCIAnalyzer (topology built once, geometry per frame).
@@ -444,22 +466,39 @@ def render_trajectory_gif(
     """
     from xyzgraph import build_graph
 
-    # Build graph from last frame (optimized geometry → correct bond orders)
-    last = frames[-1]
-    last_atoms = list(zip(last["symbols"], [tuple(p) for p in last["positions"]], strict=True))
-    graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
+    if trj_bonds:
+        # Build one graph per frame so changing connectivity is shown correctly.
+        for i, frame in enumerate(frames):
+            atoms = list(zip(frame["symbols"], [tuple(p) for p in frame["positions"]], strict=True))
+            g = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
+            if reference_graph is not None:
+                _copy_ts_nci_attrs(g, reference_graph)
+            frame["graph"] = g
+            logger.debug("Per-frame graph %d/%d: %d bonds", i + 1, len(frames), g.number_of_edges())
+        bond_counts = [f["graph"].number_of_edges() for f in frames]
+        logger.info(
+            "Per-frame bonds: rebuilt %d graphs (bonds: %d..%d, last=%d)",
+            len(frames),
+            min(bond_counts),
+            max(bond_counts),
+            bond_counts[-1],
+        )
+        # Use last frame's graph as the topology anchor for Kabsch alignment.
+        graph = frames[-1]["graph"]
+    else:
+        # Build graph from last frame (optimized geometry → correct bond orders)
+        last = frames[-1]
+        last_atoms = list(zip(last["symbols"], [tuple(p) for p in last["positions"]], strict=True))
+        graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
 
-    # Copy TS/NCI edge attributes from reference graph
-    if reference_graph is not None:
-        for i, j, d in reference_graph.edges(data=True):
-            if graph.has_edge(i, j):
-                for attr in ("TS", "NCI", "bond_type"):
-                    if attr in d:
-                        graph[i][j][attr] = d[attr]
+        if reference_graph is not None:
+            _copy_ts_nci_attrs(graph, reference_graph)
 
-    # Build NCI analyzer once from topology, detect per frame later
+    # NCI: build analyzer once from the fixed topology, or rebuild per frame
+    # when bonds change (trj_bonds) since π-systems / sites / pair list depend
+    # on the graph.
     nci_analyzer = None
-    if detect_nci:
+    if detect_nci and not trj_bonds:
         from xyzgraph.nci import NCIAnalyzer
 
         nci_analyzer = NCIAnalyzer(graph)
@@ -489,7 +528,13 @@ def render_trajectory_gif(
 
     logger.info("Rendering trajectory GIF (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
     pngs = _render_frames(
-        graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign
+        graph,
+        frames,
+        config,
+        nci_analyzer=nci_analyzer,
+        detect_nci_per_frame=detect_nci and trj_bonds,
+        rotation_axis=axis_vec,
+        rotation_sign=axis_sign,
     )
     _stitch_gif(pngs, output, fps)
     logger.info("Wrote %s", output)
@@ -654,7 +699,17 @@ def _rotate_frames(frames: list[dict], rot: np.ndarray) -> list[dict]:
         pos = np.array(frame["positions"])
         centroid = pos.mean(axis=0)
         pos_rotated = (rot @ (pos - centroid).T).T + centroid
-        rotated.append({"symbols": frame["symbols"], "positions": pos_rotated})
+        new_frame = {
+            "symbols": frame["symbols"],
+            "positions": pos_rotated,
+        }
+        if "graph" in frame:
+            new_frame["graph"] = frame["graph"]
+        if "bond_opacities" in frame:
+            new_frame["bond_opacities"] = frame["bond_opacities"]
+        if "hull_opacity_factor" in frame:
+            new_frame["hull_opacity_factor"] = frame["hull_opacity_factor"]
+        rotated.append(new_frame)
     return rotated
 
 
@@ -763,6 +818,7 @@ def _render_traj_frame(
     config: "RenderConfig",
     nci_analyzer: "NCIAnalyzer | None",
     fixed_ncis: list | None,
+    detect_nci_per_frame: bool,
     rotation_axis: np.ndarray | None,
     rotation_sign: float,
     step: float,
@@ -770,12 +826,14 @@ def _render_traj_frame(
     rf_vec_dirs: np.ndarray,
 ) -> tuple[int, bytes]:
     """Worker: render one trajectory/vibration frame to PNG."""
-    if nci_analyzer is not None or fixed_ncis is not None:
+    if nci_analyzer is not None or fixed_ncis is not None or detect_nci_per_frame:
         from xyzgraph.nci import build_nci_graph
     if rotation_axis is not None:
         from xyzrender.utils import apply_axis_angle_rotation
 
     idx, frame = idx_frame
+    # Use per-frame graph when available (trj_bonds mode), otherwise shared graph.
+    graph = frame.get("graph", graph)
     positions = frame["positions"]
     for i, (x, y, z) in enumerate(positions):
         graph.nodes[i]["position"] = (float(x), float(y), float(z))
@@ -787,7 +845,12 @@ def _render_traj_frame(
             if graph.has_edge(i, j):
                 graph[i][j]["diffuse_opacity"] = op
 
-    if nci_analyzer is not None:
+    if detect_nci_per_frame:
+        from xyzgraph.nci import NCIAnalyzer
+
+        ncis = NCIAnalyzer(graph).detect(np.array(positions))
+        render_graph = build_nci_graph(graph, ncis)
+    elif nci_analyzer is not None:
         ncis = nci_analyzer.detect(np.array(positions))
         render_graph = build_nci_graph(graph, ncis)
     elif fixed_ncis is not None:
@@ -819,6 +882,7 @@ def _render_frames(
     *,
     nci_analyzer: NCIAnalyzer | None = None,
     fixed_ncis: list | None = None,
+    detect_nci_per_frame: bool = False,
     rotation_axis: np.ndarray | None = None,
     rotation_sign: float = 1.0,
     rotation_degrees: float = 360.0,
@@ -829,8 +893,12 @@ def _render_frames(
     frame and the graph is decorated with the frame-specific NCI edges.
     If *fixed_ncis* is provided, the same NCI set is applied to every frame
     (centroids recomputed from current atom positions each frame).
+    If *detect_nci_per_frame* is True, a fresh ``NCIAnalyzer`` is built
+    inside each worker from ``frame["graph"]`` (trj_bonds + detect_nci).
     If *rotation_axis* is provided, each frame is incrementally rotated
     around that axis over *rotation_degrees* (default 360°).
+    If any frame dict carries a ``"graph"`` key (trj_bonds mode), that
+    per-frame graph is used instead of the shared *graph*.
     """
     total = len(frames)
     step = rotation_degrees / total if rotation_axis is not None else 0
@@ -850,6 +918,7 @@ def _render_frames(
         config=config,
         nci_analyzer=nci_analyzer,
         fixed_ncis=fixed_ncis,
+        detect_nci_per_frame=detect_nci_per_frame,
         rotation_axis=rotation_axis,
         rotation_sign=rotation_sign,
         step=step,
