@@ -107,6 +107,90 @@ class Molecule:
     oriented: bool = False
     ensemble: EnsembleFrames | None = None
 
+    @property
+    def lattice(self) -> np.ndarray | None:
+        """Crystal lattice as a 3x3 numpy array, or ``None`` if non-periodic."""
+        return self.cell_data.lattice if self.cell_data is not None else None
+
+    def copy(self) -> "Molecule":
+        """Deep-copy the parts that ``render()`` must not mutate.
+
+        Graph and cell_data are deep-copied; cube_data and ensemble frames are
+        read-only after parsing and are shared.  Encapsulates the contract from
+        MEMORY.md (render must never mutate caller's mol).
+        """
+        return Molecule(
+            graph=copy.deepcopy(self.graph),
+            cube_data=self.cube_data,
+            cell_data=copy.deepcopy(self.cell_data) if self.cell_data is not None else None,
+            oriented=self.oriented,
+            ensemble=self.ensemble,
+        )
+
+    def orient(
+        self,
+        *,
+        tilt_degrees: float | None = None,
+        priority_pairs: list[tuple[int, int]] | None = None,
+        force: bool = False,
+    ) -> None:
+        """PCA-orient atoms, lattice, and ``graph['lattice']`` atomically.
+
+        Idempotent: no-op when ``self.oriented`` is True unless ``force=True``.
+        Atoms are written back centred at the origin (mean = 0) — this matches
+        the convention used by the surface builders, which expect cube-grid
+        and atom coordinates in the same centred frame.  The lattice direction
+        vectors are rotated around the origin; the cell origin (a position) is
+        rotated around the molecular centroid and *also* re-centred to the
+        atom frame, eliminating the frame-divergence bug.  Both ``cell_data``
+        storage locations and the corresponding ``graph['lattice']`` /
+        ``graph['lattice_origin']`` entries are kept in sync.
+        """
+        from xyzrender.utils import pca_orient
+
+        if self.oriented and not force:
+            return
+
+        node_ids = list(self.graph.nodes())
+        if not node_ids:
+            self.oriented = True
+            return
+
+        pos = np.array([self.graph.nodes[i]["position"] for i in node_ids], dtype=float)
+        centroid = pos.mean(axis=0)
+
+        oriented_pos, rot = pca_orient(pos, priority_pairs=priority_pairs, return_matrix=True)
+
+        if tilt_degrees is not None:
+            theta = np.radians(tilt_degrees)
+            rx = np.array(
+                [
+                    [1.0, 0.0, 0.0],
+                    [0.0, np.cos(theta), -np.sin(theta)],
+                    [0.0, np.sin(theta), np.cos(theta)],
+                ]
+            )
+            rot = rx @ rot
+            oriented_pos = oriented_pos @ rx.T
+
+        for idx, nid in enumerate(node_ids):
+            self.graph.nodes[nid]["position"] = tuple(oriented_pos[idx].tolist())
+
+        # Lattice + origin: rotate together; sync both storage locations.
+        # Origin is centred to the same frame as the atoms (no `+ centroid`),
+        # which resolves the divergence bug in the old resolve_orientation.
+        if self.cell_data is not None:
+            lat = np.asarray(self.cell_data.lattice, dtype=float)
+            origin = np.asarray(self.cell_data.cell_origin, dtype=float)
+            new_lat = lat @ rot.T
+            new_origin = (origin - centroid) @ rot.T
+            self.cell_data.lattice = new_lat
+            self.cell_data.cell_origin = new_origin
+            self.graph.graph["lattice"] = new_lat
+            self.graph.graph["lattice_origin"] = new_origin
+
+        self.oriented = True
+
     def to_xyz(self, path: str | os.PathLike, title: str = "") -> None:
         """Write the molecule to an XYZ file.
 
@@ -382,10 +466,11 @@ def orient(mol: Molecule, viewer: str = "vmol", also: list[Molecule] | None = No
         logger.warning("orient(): no orientation received from viewer; mol.oriented not set")
         return
 
-    # Cube grid alignment is handled automatically by resolve_orientation() at
-    # render time via Kabsch rotation from original cube atoms → rotated graph.
-    # Re-sync cell_data from the rotated graph lattice (rotate_with_viewer updates
-    # graph.graph["lattice"] in-place but mol.cell_data was built before rotation).
+    # Cube-grid alignment at render time is handled by ``align_cube_to_atoms``
+    # via Kabsch rotation from original cube atoms → rotated graph.
+    # Re-sync cell_data from the rotated graph lattice (rotate_with_viewer
+    # updates graph.graph["lattice"] in-place but mol.cell_data was built
+    # before rotation).
     if mol.cell_data is not None and "lattice" in mol.graph.graph:
         mol.cell_data.lattice = np.array(mol.graph.graph["lattice"], dtype=float)
         mol.cell_data.cell_origin = np.array(mol.graph.graph.get("lattice_origin", [0, 0, 0]), dtype=float)
@@ -1042,18 +1127,11 @@ def render(
     if surface_style is not None:
         cfg.surface_style = surface_style
 
-    # --- Never mutate mol — work on a render-time copy ---
-    # resolve_orientation() (called by every compute_*_surface) writes PCA-rotated
-    # positions back into the graph in-place and add_crystal_images() appends ghost
-    # nodes.  Without a copy, a second render() of the same Molecule sees already-
-    # oriented positions; the second PCA is ~identity so atom_centroid (original cube
-    # frame) no longer matches target_centroid (≈ 0,0,0), misaligning the surface.
-    rmol = Molecule(
-        graph=copy.deepcopy(mol.graph),
-        cube_data=mol.cube_data,  # read-only - no copy needed
-        cell_data=copy.deepcopy(mol.cell_data) if mol.cell_data is not None else None,
-        oriented=mol.oriented,
-    )
+    # render() must never mutate mol — work on a render-time copy.
+    # See ``Molecule.copy``: PCA orient writes back to graph in-place and
+    # add_crystal_images appends ghost nodes; a shared mol would drift
+    # across repeated renders.
+    rmol = mol.copy()
 
     # --- Orientation reference ---
     if ref is not None:
@@ -2806,10 +2884,10 @@ def _validate_and_compute_surfaces(
     from xyzrender.surfaces import compute_dens_surface, compute_esp_surface, compute_mo_surface, compute_nci_surface
 
     if mo_params is not None and cube_data is not None:
-        compute_mo_surface(rmol.graph, cube_data, cfg, mo_params)
+        compute_mo_surface(rmol, cube_data, cfg, mo_params)
 
     if dens_params is not None and cube_data is not None:
-        compute_dens_surface(rmol.graph, cube_data, cfg, dens_params)
+        compute_dens_surface(rmol, cube_data, cfg, dens_params)
 
     if esp_params is not None and esp is not None and cube_data is not None:
         if cfg.cmap_range is not None and cfg.cmap_symm:
@@ -2818,11 +2896,11 @@ def _validate_and_compute_surfaces(
         if cfg.surface_style != "solid":
             logger.info("ESP uses raster rendering; --surface-style %s is ignored", cfg.surface_style)
         esp_cube = parse_cube(str(esp))
-        compute_esp_surface(rmol.graph, cube_data, esp_cube, cfg, esp_params)
+        compute_esp_surface(rmol, cube_data, esp_cube, cfg, esp_params)
 
     if nci_params is not None and nci is not None and cube_data is not None:
         nci_cube = parse_cube(str(nci))
-        compute_nci_surface(rmol.graph, cube_data, nci_cube, cfg, nci_params, iso_was_explicit=iso_was_explicit)
+        compute_nci_surface(rmol, cube_data, nci_cube, cfg, nci_params, iso_was_explicit=iso_was_explicit)
 
 
 def _apply_cell_config(

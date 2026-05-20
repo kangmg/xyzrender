@@ -14,10 +14,9 @@ from pathlib import Path
 
 import networkx as nx
 import numpy as np
-import pytest
 
-from xyzrender.types import CellData, RenderConfig
-from xyzrender.utils import pca_matrix, pca_orient, resolve_orientation
+from xyzrender.types import CellData
+from xyzrender.utils import pca_matrix, pca_orient
 
 _STRUCTURES = Path(__file__).parent.parent / "examples" / "structures"
 
@@ -57,94 +56,31 @@ def _positions(graph: nx.Graph) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_orientation_preserves_centroid_relative_fractional_coords():
-    """resolve_orientation centers atoms (mean = 0) and rotates the lattice.
-    The genuine invariant under pure rotation: fractional coords expressed
+def test_molecule_orient_preserves_centroid_relative_fractional_coords():
+    """The genuine invariant under pure rotation: fractional coords expressed
     *relative to the molecular centroid* must be preserved, since rotation
     cannot drift atoms relative to the cell.
-
-    (We do NOT test invariance against the lattice's stored cell_origin,
-    because resolve_orientation centers the atoms but keeps the origin
-    in world frame — atoms and origin live in different frames after orient.
-    That's an internal convention of resolve_orientation; downstream
-    surface code knows to compensate.)
     """
+    from xyzrender.api import Molecule
+
     graph, lat0, _ = _build_periodic_graph()
     pos_before = _positions(graph)
     centroid_before = pos_before.mean(axis=0)
     frac_before = (pos_before - centroid_before) @ np.linalg.inv(lat0)
 
-    cfg = RenderConfig(auto_orient=True, cell_data=CellData(lattice=lat0.copy()))
-    resolve_orientation(graph, None, cfg)
-    assert cfg.cell_data is not None  # narrow for type checker
+    mol = Molecule(graph=graph, cell_data=CellData(lattice=lat0.copy()))
+    mol.orient()
+    assert mol.cell_data is not None
 
-    pos_after = _positions(graph)
+    pos_after = _positions(mol.graph)
     centroid_after = pos_after.mean(axis=0)
-    rotated_lat = np.asarray(cfg.cell_data.lattice, dtype=float)
+    rotated_lat = np.asarray(mol.cell_data.lattice, dtype=float)
     frac_after = (pos_after - centroid_after) @ np.linalg.inv(rotated_lat)
 
     assert np.allclose(frac_after, frac_before, atol=1e-9), (
         "Atom fractional coords (relative to centroid) drifted after orient — "
         "atoms and lattice were not rotated by the same matrix.\n"
         f"before={frac_before.tolist()}\nafter={frac_after.tolist()}"
-    )
-
-
-@pytest.mark.xfail(
-    reason="Bug #1 from the orientation audit: resolve_orientation rotates "
-    "cfg.cell_data.lattice but does NOT update graph.graph['lattice']. "
-    "The two storage locations diverge until Phase 1d (Molecule class) makes "
-    "lattice a single property that updates both backing fields atomically. "
-    "Existing render path reads from cfg.cell_data so the user-visible "
-    "behaviour is correct; this test will start passing post-1d."
-)
-def test_resolve_orientation_syncs_lattice_storage_locations():
-    """After resolve_orientation rotates a periodic system, the lattice stored
-    on cfg.cell_data and the lattice stored on graph.graph['lattice'] must
-    describe the same physical cell.  If they diverge, downstream code that
-    reads one but not the other (crystal images, viewer, supercell expansion)
-    will place ghosts in a stale frame."""
-    graph, lat0, _ = _build_periodic_graph()
-    cfg = RenderConfig(auto_orient=True, cell_data=CellData(lattice=lat0.copy()))
-
-    resolve_orientation(graph, None, cfg)
-    assert cfg.cell_data is not None
-
-    lat_cfg = np.asarray(cfg.cell_data.lattice, dtype=float)
-    lat_graph = np.asarray(graph.graph["lattice"], dtype=float)
-    assert np.allclose(lat_cfg, lat_graph, atol=1e-9), (
-        f"lattice diverged.\ncfg={lat_cfg.tolist()}\ngraph={lat_graph.tolist()}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Idempotence
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_orientation_idempotent_via_auto_orient_flag():
-    """resolve_orientation clears cfg.auto_orient after applying PCA; calling
-    it a second time on the same cfg must be a no-op (positions and lattice
-    unchanged)."""
-    graph, lat0, _ = _build_periodic_graph()
-    cfg = RenderConfig(auto_orient=True, cell_data=CellData(lattice=lat0.copy()))
-
-    resolve_orientation(graph, None, cfg)
-    assert cfg.cell_data is not None
-    pos_after_first = _positions(graph)
-    lat_after_first = np.asarray(cfg.cell_data.lattice, dtype=float).copy()
-    assert cfg.auto_orient is False, "auto_orient flag must clear after PCA"
-
-    # Second call: cfg.auto_orient is False, so should be a no-op
-    resolve_orientation(graph, None, cfg)
-    pos_after_second = _positions(graph)
-    lat_after_second = np.asarray(cfg.cell_data.lattice, dtype=float)
-
-    assert np.allclose(pos_after_first, pos_after_second, atol=1e-12), (
-        "second resolve_orientation rotated positions again"
-    )
-    assert np.allclose(lat_after_first, lat_after_second, atol=1e-12), (
-        "second resolve_orientation rotated lattice again"
     )
 
 
@@ -241,20 +177,22 @@ def test_priority_pairs_influence_orientation():
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_orientation_with_tilt_changes_z():
-    """resolve_orientation(tilt_degrees=-30) applies an additional rotation
-    around x AFTER PCA — z coordinates must differ from the no-tilt case
-    (unless the molecule happens to be invariant under that rotation)."""
+def test_molecule_orient_with_tilt_changes_z():
+    """``mol.orient(tilt_degrees=-30)`` applies an additional rotation around
+    x AFTER PCA — z coordinates must differ from the no-tilt case (unless the
+    molecule happens to be invariant under that rotation)."""
+    from xyzrender.api import Molecule
+
     graph_a, _, _ = _build_periodic_graph()
     graph_b, _, _ = _build_periodic_graph()
-    cfg_a = RenderConfig(auto_orient=True)
-    cfg_b = RenderConfig(auto_orient=True)
+    mol_a = Molecule(graph=graph_a)
+    mol_b = Molecule(graph=graph_b)
 
-    resolve_orientation(graph_a, None, cfg_a, tilt_degrees=None)
-    resolve_orientation(graph_b, None, cfg_b, tilt_degrees=-30.0)
+    mol_a.orient(tilt_degrees=None)
+    mol_b.orient(tilt_degrees=-30.0)
 
-    pos_a = _positions(graph_a)
-    pos_b = _positions(graph_b)
+    pos_a = _positions(mol_a.graph)
+    pos_b = _positions(mol_b.graph)
     assert np.allclose(pos_a[:, 0], pos_b[:, 0], atol=1e-9), "tilt rotates around x; x coords must be preserved"
     assert not np.allclose(pos_a[:, 2], pos_b[:, 2], atol=1e-6), "tilt_degrees=-30 had no effect on z coordinates"
 
@@ -277,3 +215,91 @@ def test_pca_matrix_and_pca_orient_agree():
         "pca_matrix and pca_orient produced different rotation matrices on "
         "the same input — callers mixing the two will get inconsistent frames"
     )
+
+
+# ---------------------------------------------------------------------------
+# Molecule.orient() — the Phase 1d canonical orientation method
+# ---------------------------------------------------------------------------
+
+
+def test_molecule_orient_syncs_lattice_storage_locations():
+    """``mol.orient()`` must rotate cfg.cell_data.lattice AND
+    graph.graph['lattice'] together — the Phase 1d invariant that the old
+    ``resolve_orientation`` violated (Bug #1 from the audit)."""
+    from xyzrender.api import Molecule
+
+    graph, lat0, _ = _build_periodic_graph()
+    cd = CellData(lattice=lat0.copy())
+    mol = Molecule(graph=graph, cell_data=cd)
+
+    mol.orient()
+    assert mol.cell_data is not None
+
+    lat_cd = np.asarray(mol.cell_data.lattice, dtype=float)
+    lat_graph = np.asarray(mol.graph.graph["lattice"], dtype=float)
+    assert np.allclose(lat_cd, lat_graph, atol=1e-12)
+
+
+def test_molecule_orient_centers_atoms_at_origin():
+    """Option A convention: ``mol.orient()`` writes back atoms centred at
+    the origin (mean = 0).  Matches the existing surface-builder convention
+    so downstream cube-grid math stays byte-identical."""
+    from xyzrender.api import Molecule
+
+    graph, _, _ = _build_periodic_graph()
+    mol = Molecule(graph=graph)
+    mol.orient()
+
+    centroid_after = _positions(mol.graph).mean(axis=0)
+    assert np.allclose(centroid_after, np.zeros(3), atol=1e-9)
+
+
+def test_molecule_orient_is_idempotent():
+    """Second call to ``mol.orient()`` is a no-op while ``mol.oriented`` is True."""
+    from xyzrender.api import Molecule
+
+    graph, lat0, _ = _build_periodic_graph()
+    mol = Molecule(graph=graph, cell_data=CellData(lattice=lat0.copy()))
+
+    mol.orient()
+    assert mol.lattice is not None
+    pos_after_first = _positions(mol.graph)
+    lat_after_first = mol.lattice.copy()
+
+    mol.orient()
+    assert np.allclose(_positions(mol.graph), pos_after_first, atol=1e-12)
+    assert np.allclose(mol.lattice, lat_after_first, atol=1e-12)
+
+
+def test_molecule_orient_force_reorients():
+    """``force=True`` overrides the idempotence check."""
+    from xyzrender.api import Molecule
+
+    graph, _, _ = _build_periodic_graph()
+    mol = Molecule(graph=graph, oriented=True)  # pretend already oriented
+    pos_before = _positions(mol.graph)
+
+    mol.orient()  # no-op due to oriented=True
+    assert np.allclose(_positions(mol.graph), pos_before, atol=1e-12)
+
+    mol.orient(force=True)  # now rotates
+    # PCA should change the positions for a triclinic 3-atom system
+    assert not np.allclose(_positions(mol.graph), pos_before, atol=1e-3)
+
+
+def test_molecule_copy_isolates_mutations():
+    """``mol.copy()`` must produce an independent graph + cell_data so that
+    orienting the copy does not mutate the original."""
+    from xyzrender.api import Molecule
+
+    graph, lat0, _ = _build_periodic_graph()
+    mol = Molecule(graph=graph, cell_data=CellData(lattice=lat0.copy()))
+    assert mol.lattice is not None
+    pos_orig = _positions(mol.graph)
+    lat_orig = mol.lattice.copy()
+
+    rmol = mol.copy()
+    rmol.orient()
+
+    assert np.allclose(_positions(mol.graph), pos_orig, atol=1e-12), "mol.graph was mutated through the copy"
+    assert np.allclose(mol.lattice, lat_orig, atol=1e-12), "mol.lattice was mutated through the copy"

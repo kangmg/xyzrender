@@ -120,8 +120,13 @@ def _orient_frames(frames: list[dict], vt: np.ndarray) -> list[dict]:
     return oriented
 
 
-def _orient_graph(graph, vt: np.ndarray) -> None:
-    """Apply PCA rotation to graph node positions in-place."""
+def _orient_graph(graph, vt: np.ndarray, cell_data=None) -> None:
+    """Apply PCA rotation to graph node positions in-place.
+
+    When *cell_data* is given, the lattice and cell origin on it are also
+    rotated so the canonical (cfg-stored) lattice stays in sync with
+    ``graph.graph['lattice']`` — same invariant as :meth:`Molecule.orient`.
+    """
     nodes = list(graph.nodes())
     pos = np.array([graph.nodes[n]["position"] for n in nodes])
     centroid = pos.mean(axis=0)
@@ -130,11 +135,14 @@ def _orient_graph(graph, vt: np.ndarray) -> None:
         graph.nodes[nid]["position"] = tuple(rotated[i].tolist())
     if "lattice" in graph.graph:
         lat = np.array(graph.graph["lattice"], dtype=float)
-        graph.graph["lattice"] = (vt @ lat.T).T
-        # Always set up the origin (even if implicit) so the GIF matches
-        # the static SVG: cell_origin = PCA(file_origin - pre_centroid).
+        new_lat = lat @ vt.T
+        graph.graph["lattice"] = new_lat
         origin = np.array(graph.graph.get("lattice_origin", np.zeros(3)), dtype=float)
-        graph.graph["lattice_origin"] = vt @ (origin - centroid)  # new centroid = 0
+        new_origin = vt @ (origin - centroid)  # new centroid = 0 (Option A)
+        graph.graph["lattice_origin"] = new_origin
+        if cell_data is not None:
+            cell_data.lattice = new_lat
+            cell_data.cell_origin = new_origin
 
 
 if TYPE_CHECKING:
@@ -220,7 +228,7 @@ def render_vibration_gif(
 
         vt = pca_matrix(np.array(frames[0]["positions"]))
         frames = _orient_frames(frames, vt)
-        _orient_graph(ts_graph, vt)
+        _orient_graph(ts_graph, vt, config.cell_data)
         config = copy.copy(config)
         config.auto_orient = False
 
@@ -294,7 +302,7 @@ def render_rotation_gif(
         _pca_pos = np.array([graph.nodes[n]["position"] for n in nodes])
         _pca_centroid = _pca_pos.mean(axis=0)
         _pca_vt = pca_matrix(_pca_pos)
-        _orient_graph(graph, _pca_vt)
+        _orient_graph(graph, _pca_vt, config.cell_data)
         if config.vectors:
             import copy as _cp
 
@@ -313,7 +321,7 @@ def render_rotation_gif(
                 nv.vector = d
                 new_vecs.append(nv)
             config.vectors = new_vecs
-        # MO surfaces use a -30° x-axis tilt (same as resolve_orientation tilt_degrees=-30.0)
+        # MO surfaces use a -30° x-axis tilt (same as Molecule.orient(tilt_degrees=-30.0))
         # so the GIF starting frame matches the static render orientation.
         if mo_params is not None:
             theta = np.radians(-30.0)
@@ -566,7 +574,7 @@ def render_diffuse_gif(
 
     if config.auto_orient:
         vt = pca_matrix(np.array([graph.nodes[n]["position"] for n in graph.nodes()]))
-        _orient_graph(graph, vt)
+        _orient_graph(graph, vt, config.cell_data)
         config = copy.copy(config)
         config.auto_orient = False
 
