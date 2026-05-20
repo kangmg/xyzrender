@@ -1845,7 +1845,10 @@ def render_gif(
             ref_graph = _cell_mol.graph
 
         # Surfaces
-        cube_data = mol_obj.cube_data if mol_obj is not None else None
+        # NB: use _gif_mol (loaded from path or passed in), not mol_obj — the
+        # latter is None when a path was passed, which would silently drop
+        # cube_data for path-based render_gif(path, mo=True) calls.
+        cube_data = _gif_mol.cube_data
         mo_p = dens_p = None
         if cube_data is not None and (mo or dens):
             from xyzrender.config import build_surface_params
