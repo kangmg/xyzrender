@@ -171,6 +171,7 @@ def render_vibration_gif(
     multiplicity: int | None = None,
     mode: int = 0,
     ts_frame: int = 0,
+    vib_frames: int | None = None,
     fps: int = 10,
     axis: str | None = None,
     n_frames: int | None = None,
@@ -195,6 +196,9 @@ def render_vibration_gif(
         msg = "Vibration GIF requires graphrc"
         raise ImportError(msg) from None
 
+    vib_kwargs = {}
+    if vib_frames is not None:
+        vib_kwargs["n_frames"] = vib_frames
     results = run_vib_analysis(
         input_file=path,
         mode=mode,
@@ -203,6 +207,7 @@ def render_vibration_gif(
         charge=charge,
         multiplicity=multiplicity,
         print_output=False,
+        **vib_kwargs,
     )
 
     ts_graph = results["graph"]["ts_graph"]

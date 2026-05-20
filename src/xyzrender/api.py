@@ -1333,6 +1333,7 @@ def render_gif(
     output: str | os.PathLike | None = None,
     gif_fps: int = 10,
     rot_frames: int = 120,
+    vib_frames: int | None = None,
     ts_frame: int = 0,
     config: str | RenderConfig = "default",
     # --- Style (same as render(), only used when config is a string) ---
@@ -1555,6 +1556,8 @@ def render_gif(
             "only/exclude atom filters are only supported for render_gif() rotation/diffuse modes, not trajectory modes"
         )
         raise ValueError(msg)
+    if vib_frames is not None and not gif_ts:
+        logger.warning("vib_frames has no effect without gif_ts")
 
     # Resolve config
     _gif_mol = molecule if isinstance(molecule, Molecule) else load(molecule)
@@ -1713,6 +1716,7 @@ def render_gif(
             path=str(mol_path),
             config=cfg,
             output=str(gif_path),
+            vib_frames=vib_frames,
             fps=gif_fps,
             ts_frame=ts_frame,
             reference_graph=reference_graph,
