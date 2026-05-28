@@ -75,8 +75,8 @@ def apply_bond_rules(graph: nx.Graph, cfg: RenderConfig) -> None:
         parts = spec.split("-")
         if len(parts) != 2:
             raise ValueError(
-                f"Invalid unbond spec {spec!r}: expected a category/element (e.g. 'M', 'Li'), "
-                f"a pair 'X-Y' (e.g. 'M-L', 'Fe-het'), or an index pair (e.g. '1-3')"
+                f"Invalid unbond spec {spec!r}: expected a category/element (e.g. 'M', 'Li', 'hal'), "
+                f"a pair 'left-right' (e.g. 'M-L', 'Fe-het', 'M-hal'), or an index pair (e.g. '1-3')"
             )
         left = normalize_token(parts[0])
         right = normalize_token(parts[1])

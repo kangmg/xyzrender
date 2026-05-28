@@ -19,43 +19,52 @@ if TYPE_CHECKING:
 # Category definitions
 # ---------------------------------------------------------------------------
 
+# Element symbols recognised by xyzgraph (1- or 2-char, title-case).
+_ALL_SYMBOLS: frozenset[str] = frozenset(DATA.s2n.keys())
+
 _STATIC_CATEGORIES: dict[str, frozenset[str]] = {
     "M": frozenset(DATA.metals),
     "sbm": frozenset(DATA.sblock_metals),
     "L": frozenset(s for s in DATA.s2n if s not in DATA.metals),
     "het": frozenset(s for s in DATA.s2n if s not in DATA.metals and s not in ("C", "H")),
+    # Main-group buckets keyed by IUPAC group.  Overlaps with M (e.g. Al ∈ triel
+    # ∩ M) and with each other (As ∈ pnic; metalloid status is implicit) are
+    # intentional — set unions in the caller resolve membership.
+    "hal": frozenset({"F", "Cl", "Br", "I", "At"}),
+    "pnic": frozenset({"N", "P", "As", "Sb", "Bi"}),
+    "chal": frozenset({"O", "S", "Se", "Te", "Po"}),
+    "noble": frozenset({"He", "Ne", "Ar", "Kr", "Xe", "Rn"}),
+    "triel": frozenset({"B", "Al", "Ga", "In", "Tl"}),
+    "tetrel": frozenset({"C", "Si", "Ge", "Sn", "Pb"}),
 }
 
-# Element symbols recognised by xyzgraph (1- or 2-char, title-case).
-_ALL_SYMBOLS: frozenset[str] = frozenset(DATA.s2n.keys())
+# Topological categories — handled by callers, no associated element set.
+_TOPOLOGICAL_CATEGORIES: frozenset[str] = frozenset({"pi"})
+
+_VALID_TOKENS_HELP = "Valid categories: " + ", ".join(list(_STATIC_CATEGORIES) + sorted(_TOPOLOGICAL_CATEGORIES))
 
 
 def normalize_token(token: str) -> str:
     """Normalise a category/element token and validate it.
 
-    Categories (``M``, ``sbm``, ``het``, ``pi``, ``L``) are matched
-    case-insensitively.  Element symbols are title-cased (``fe`` → ``Fe``).
+    Categories are matched case-insensitively against the keys of
+    :data:`_STATIC_CATEGORIES` plus the topological ``pi`` rule.  Element
+    symbols are title-cased (``fe`` → ``Fe``).
 
     Raises :class:`ValueError` if *token* is not a recognised category
     or element symbol.
     """
     low = token.lower()
-    # Check categories first (case-insensitive)
-    for cat in ("sbm", "het", "pi"):
-        if low == cat:
-            return cat
-    if low == "m":
-        return "M"
-    if low == "l":
-        return "L"
-    # Try as element symbol (title-case)
+    for cat_key in _STATIC_CATEGORIES:
+        if low == cat_key.lower():
+            return cat_key
+    if low in _TOPOLOGICAL_CATEGORIES:
+        return low
     title = token.capitalize()
     if title in _ALL_SYMBOLS:
         return title
     raise ValueError(
-        f"Unknown category or element symbol {token!r}. "
-        f"Valid categories: M, sbm, L, het, pi. "
-        f"Or use an element symbol (Fe, Li, O, …)."
+        f"Unknown category or element symbol {token!r}. {_VALID_TOKENS_HELP}. Or use an element symbol (Fe, Li, O, …)."
     )
 
 
@@ -71,6 +80,12 @@ def resolve_element_set(token: str) -> frozenset[str]:
         * ``"sbm"`` - s-block metals (``DATA.sblock_metals``)
         * ``"L"`` - non-metals (complement of metals present in *all known symbols*)
         * ``"het"`` - heteroatoms (not C, not H, not metal)
+        * ``"hal"`` - halogens (group 17: F, Cl, Br, I, At)
+        * ``"pnic"`` - pnictogens (group 15: N, P, As, Sb, Bi)
+        * ``"chal"`` - chalcogens (group 16: O, S, Se, Te, Po)
+        * ``"noble"`` - noble gases (group 18: He, Ne, Ar, Kr, Xe, Rn)
+        * ``"triel"`` - triels / group 13: B, Al, Ga, In, Tl
+        * ``"tetrel"`` - tetrels / group 14: C, Si, Ge, Sn, Pb
         * An element symbol (``"Fe"``, ``"Li"``, …)
 
     Returns
@@ -88,11 +103,11 @@ def resolve_element_set(token: str) -> frozenset[str]:
         return _STATIC_CATEGORIES[norm]
     if norm in _ALL_SYMBOLS:
         return frozenset({norm})
-    # "pi" passes normalize_token but has no element set (topological rule
-    # handled separately in bond_rules.py)
+    # Topological categories (e.g. "pi") pass normalize_token but have no
+    # element set — they're handled separately in bond_rules.py.
     raise ValueError(
         f"{token!r} cannot be resolved to an element set. "
-        f"Valid categories: M, sbm, L, het. Or use an element symbol (Fe, Li, O, …)."
+        f"{_VALID_TOKENS_HELP}. Or use an element symbol (Fe, Li, O, …)."
     )
 
 
@@ -107,10 +122,13 @@ def resolve_atom_indices(spec: str, graph: nx.Graph) -> set[int]:
     graph has metals they resolve to *atoms bonded to a metal* (the chemistry
     meaning of "ligand" / "ligand-heteroatom"), not the literal element
     complement.  Without metals in the graph they fall back to the full
-    element set.  Specific element tokens (``Fe``, ``P``, ``Cl``, …) are
-    always literal.
+    element set.  Specific element tokens (``Fe``, ``P``, ``Cl``, …) and
+    group tokens (``hal``, ``pnic``, ``chal``, ``noble``, ``triel``,
+    ``tetrel``) are always literal element-set matches.
 
     Examples: ``"1,2-4,M,N"`` → union of {0}, {1,2,3}, metals, nitrogens.
+    ``"hal"`` → every halogen atom; ``"chal,pnic"`` → all O/S/Se/Te/Po and
+    N/P/As/Sb/Bi atoms.
 
     Parameters
     ----------
