@@ -40,12 +40,18 @@ All CLI flags are available as keyword arguments to `render()`:
 
 ### Styling
 
+`config=` accepts a built-in preset name, a path to your own JSON file, or a pre-built `RenderConfig` from [`build_config()`](#reusing-a-style-config).
+
 ```python
 render(mol, config="flat")                                     # built-in preset
 render(mol, config="paton", transparent=True)                  # preset + transparent bg
-render(mol, bond_width=8, atom_scale=1.5, background="#f0f0f0") # individual overrides
+render(mol, config="./my_style.json")                          # custom JSON file
+render(mol, config="./my_style.json", hy=True)                 # kwargs override file values
+render(mol, bond_width=8, atom_scale=1.5, background="#f0f0f0") # individual overrides (no preset)
 render(mol, hide_bonds=True)                                   # hide all bonds
 ```
+
+See [Building a custom preset](configuration.md#building-a-custom-preset) for the JSON schema and `regions` layering.
 
 ### Bond display rules
 
@@ -66,9 +72,22 @@ render(mol, unbond=["M-L"], bond=["2-5"])     # hide M-L but keep bond 2-5
 render(mol, unbond=["sbm", "M-pi", "1-3"])    # multiple specs
 ```
 
-Available categories: `M` (all metals), `sbm` (s-block metals), `L` (non-metals),
-`het` (heteroatoms: not C, not H, not metal), `pi` (eta-coordination to aromatic rings).
-Any element symbol also works (`Fe`, `Li`, `O`, etc.).
+Available categories:
+
+* `M` — all metals
+* `sbm` — s-block metals (Li, Na, K, Rb, Cs + Be, Mg, Ca, Sr, Ba)
+* `L` — non-metals (or, when the graph has metals, atoms bonded to a metal)
+* `het` — heteroatoms (not C, not H, not metal)
+* `pi` — eta-coordination to aromatic rings
+* `hal` — halogens (F, Cl, Br, I, At)
+* `pnic` — pnictogens (N, P, As, Sb, Bi)
+* `chal` — chalcogens (O, S, Se, Te, Po)
+* `noble` — noble gases (He, Ne, Ar, Kr, Xe, Rn)
+* `triel` — group 13 (B, Al, Ga, In, Tl)
+* `tetrel` — group 14 (C, Si, Ge, Sn, Pb)
+
+Any element symbol also works (`Fe`, `Li`, `O`, etc.).  Tokens are
+case-insensitive (`hal` ≡ `HAL`).  Combine with commas (`"hal,chal"`).
 NCI and TS overlay edges are never removed by rules.
 
 ### Haptic centroid bonds
@@ -91,6 +110,23 @@ render(ethanol, no_hy=True)         # hide all H
 render(ethanol, hy=[7, 8, 9])       # show specific H atoms
 ```
 
+### Atom filtering
+
+Use `only=` or `exclude=` to remove atoms from the render-time graph before
+orientation, canvas fitting, bond rules, annotations, hulls, and overlays are
+resolved. Selectors use the same grammar as `highlight` and remain based on
+the original input atom numbering after filtering.
+
+```python
+salt = load("salt.xyz")
+render(salt, only="1-24")        # render one component of a salt
+render(salt, exclude="Na,Cl")    # remove counterions
+render(salt, exclude=["25-40"])  # repeatable/list form
+```
+
+Incident bonds are removed with excluded atoms. Cube/surface fields
+(`mo`, `dens`, `esp`, `nci`) are not cropped by atom filtering.
+
 ### Overlays
 
 ```python
@@ -100,10 +136,17 @@ render(mol, ts_bonds=[(1, 6)])      # manual TS bond (1-indexed)
 render(mol, ts_color="dodgerblue")  # color for dashed TS bonds
 render(mol, nci_bonds=[(2, 8)])     # manual NCI bond (1-indexed)
 render(mol, nci_color="teal")       # color for dotted NCI bonds
+render(mol, nci_element=True)       # split-half atom colour on NCI/haptic dots (off by default; on in pmol/btube/tube/mtube)
+render(mol, ts_element=True)        # same, for TS dashes (off by default; needs a by_element preset)
+render(mol, ts_dash="2.0,1.5")      # (length, gap) as bond_width multiples (default 1.2,2.2). Tuple also OK.
+render(mol, ts_width=0.5)           # TS line width as a bond_width multiple (default 1.2)
+render(mol, nci_dash=(0.2, 1.5))    # NCI/haptic (length, gap) multipliers (default 0.08,2.0)
+render(mol, nci_width=0.8)          # NCI/haptic line width as a bond_width multiple (default 1.0)
 render(mol, idx=True)               # atom index labels ("C1", "N3", ...)
 render(mol, idx="n")                # index only ("1", "3", ...)
 render(mol, mol_color="gray")                            # flat color for all atoms + bonds
 render(mol, highlight="1-3,7")                           # highlight atoms 1-3 and 7 (orchid)
+render(mol, highlight="C,N")                             # element symbols / categories ("M", "het", ...)
 render(mol, highlight=[1, 2, 3, 7])                      # 1-indexed list
 render(mol, highlight=[("1-5", "blue"), ("10-15", "red")])  # multi-group with colors
 render(mol, highlight=["1-5", "10-15"])                  # multi-group, auto-colors from palette
@@ -119,9 +162,12 @@ mol1 = load("isothio_xtb.xyz", charge=1)
 mol2 = load("isothio_uma.xyz", charge=1)
 render(mol1, overlay=mol2)                         # overlay mol2 onto mol1
 render(mol1, overlay=mol2, overlay_color="green")  # custom overlay color
-render(mol1, overlay=mol2, align_atoms=[1, 2, 3])  # align on atom subset
+render(mol1, overlay=mol2, align_atoms=[1, 2, 3])  # explicit 1-indexed subset
+render(mol1, overlay=mol2, align_atoms="M,L")      # metal + coord shell (organometallic)
 render_gif(mol1, overlay=mol2, gif_rot="y")        # spinning overlay GIF
 ```
+
+`align_atoms` accepts a 1-indexed atom list/string or a symbol/category spec (`"M,L"`, `"Fe,P"`, …). Symbol specs are resolved per-graph so atom ordering doesn't need to match between the two structures. Metal-containing specs run metal-fragment overlay so paired metals coincide exactly; non-metal specs use MCS + K-subset Kabsch and pick the lowest-RMSD candidate.
 
 See [Structural Overlay](examples/overlay.md) and [Conformer Ensemble](examples/ensemble.md) for more.
 
@@ -169,20 +215,25 @@ render(mol, hull=[1, 2, 3, 4, 5, 6],
 render(mol, hull="rings", hull_color="teal")       # auto-detect aromatic rings
 ```
 
-See [Convex Hull](examples/hull.md) for multi-subset hulls and all options.
+See [Convex hull, faces & pores](examples/hull.md) for multi-subset hulls and all options.
 
 ## Reusing a style config
 
-`build_config()` builds a `RenderConfig` object you can pass to `render()` and `render_gif()`. Useful in notebooks or scripts that render several structures with the same style:
+For a single render, pass `config=` to `render()` directly — `render(mol, config="paton")` and `render(mol, config="./my_style.json")` both work without any helper. Use `build_config()` only when you want to build the styling **once** and reuse it across many renders:
 
 ```python
-from xyzrender import build_config
+from xyzrender import build_config, render, render_gif
 
-cfg = build_config("flat", atom_scale=1.5, gradient=False)
+cfg = build_config("flat", atom_scale=1.5, gradient=False)        # built-in + tweaks
+cfg = build_config("./my_style.json")                              # custom JSON file
+cfg = build_config("./my_style.json", bond_color="steelblue")     # custom file + tweaks
+
 render(mol1, config=cfg)
-render(mol2, config=cfg, ts_bonds=[(1, 6)])   # per-render overlay on shared style
+render(mol2, config=cfg, ts_bonds=[(1, 6)])     # per-render overlay on shared style
 render_gif("mol.xyz", gif_rot="y", config=cfg)
 ```
+
+For fields not exposed as `build_config()` kwargs (`vdw_interlocking`, `mo_outline_width`, `surface_style`, `skeletal_label_color`, the `overlay` block, …), either set them in your JSON file or mutate the `RenderConfig` directly afterwards: `cfg.surface_style = "mesh"`. Resolution order is always `default.json < preset/your JSON < build_config() kwargs < render(...) kwargs`.
 
 ## Geometry measurements
 
@@ -248,6 +299,7 @@ from xyzrender import render_gif
 render_gif("caffeine.xyz", gif_rot="y")           # rotation GIF
 render_gif("ts.out", gif_ts=True)                  # TS vibration GIF
 render_gif("traj.xyz", gif_trj=True)               # trajectory GIF
+render_gif("mep.xyz", gif_trj=True, trj_bonds=True)  # re-detect bonds per frame
 render_gif("mol.xyz", gif_rot="y", config=cfg)     # with shared style config
 
 # Diffuse / assembly GIF

@@ -16,10 +16,10 @@
   </defs>
   <polygon points="215.3,355.5 307.6,515.5 492.4,515.5 584.7,355.5 492.4,195.5 307.6,195.5" fill="#4682b4" fill-opacity="0.20" stroke="none"/>
   <circle cx="492.4" cy="515.5" r="47.3" fill="url(#x0g0)" stroke="#000000" stroke-width="8.3"/>
-  <line x1="502.8" y1="472.4" x2="552.6" y2="386.1" stroke="#000000" stroke-width="14.6" stroke-linecap="round" stroke-dasharray="14.6,29.2"/>
-  <line x1="524.5" y1="484.9" x2="574.3" y2="398.6" stroke="#000000" stroke-width="14.6" stroke-linecap="round"/>
   <line x1="449.8" y1="528.0" x2="350.2" y2="528.0" stroke="#000000" stroke-width="14.6" stroke-linecap="round"/>
   <line x1="449.8" y1="503.0" x2="350.2" y2="503.0" stroke="#000000" stroke-width="14.6" stroke-linecap="round" stroke-dasharray="14.6,29.2"/>
+  <line x1="502.8" y1="472.4" x2="552.6" y2="386.1" stroke="#000000" stroke-width="14.6" stroke-linecap="round" stroke-dasharray="14.6,29.2"/>
+  <line x1="524.5" y1="484.9" x2="574.3" y2="398.6" stroke="#000000" stroke-width="14.6" stroke-linecap="round"/>
   <line x1="513.6" y1="552.3" x2="553.1" y2="620.6" stroke="#000000" stroke-width="20.8" stroke-linecap="round"/>
   <circle cx="307.6" cy="515.5" r="47.3" fill="url(#x0g1)" stroke="#000000" stroke-width="8.3"/>
   <line x1="275.5" y1="484.9" x2="225.7" y2="398.6" stroke="#000000" stroke-width="14.6" stroke-linecap="round"/>

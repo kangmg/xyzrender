@@ -233,6 +233,7 @@ class OverlayConfig:
     unbond: list[str] = field(default_factory=list)  # overlay-only bond-hide rules
     bond: list[str] = field(default_factory=list)  # overlay-only bond force-show / add
     show: list[str] = field(default_factory=list)  # visibility filter (selector grammar)
+    ts_bonds: list[tuple[int, int]] = field(default_factory=list)  # 0-indexed pairs in the overlay's own atom list
     config: "RenderConfig | None" = None  # full escape hatch; see class docstring
 
 
@@ -252,8 +253,17 @@ class RenderConfig:
     atoms_above_bonds: bool = False  # draw atoms after all bonds for diagram aesthetic
     bond_width: float = 5.0
     bond_color: str = "#333333"
-    ts_color: str | None = None  # dashed TS bonds; None -> use bond_color
-    nci_color: str | None = None  # dotted NCI bonds; None -> use bond_color
+    # TS / NCI / haptic styling. *_color sets a flat stroke; *_element splits
+    # each dash/dot into atom-coloured halves (needs bond_color_by_element).
+    # *_dash = (length, gap) and *_width are bond_width multipliers.
+    ts_color: str | None = None
+    ts_element: bool = False
+    ts_dash: tuple[float, float] = (1.2, 2.2)
+    ts_width: float = 1.2
+    nci_color: str | None = None  # also applies to haptic
+    nci_element: bool = False
+    nci_dash: tuple[float, float] = (0.08, 2.0)
+    nci_width: float = 1.0
     bond_gap: float = 0.6  # multi-bond spacing as fraction of bond_width
     bond_color_by_element: bool = False  # color bonds by endpoint atom colors
     bond_gradient: bool = False  # cylinder shading on bonds (perpendicular gradient for 3D tube look)
@@ -273,6 +283,7 @@ class RenderConfig:
     haptic: bool = False  # replace pi-coordination bonds with single metal-to-centroid bond
     hide_h: bool = False
     show_h_indices: list[int] = field(default_factory=list)
+    auto_hide_h: bool = True  # CLI default --hy=None hides C-H; set False in presets that want H always visible
     bond_orders: bool = True
     ts_bonds: list[tuple[int, int]] = field(default_factory=list)  # 0-indexed pairs
     nci_bonds: list[tuple[int, int]] = field(default_factory=list)  # 0-indexed pairs
@@ -280,6 +291,15 @@ class RenderConfig:
     vdw_opacity: float = 0.5
     vdw_scale: float = 1.0
     vdw_gradient_strength: float = 1.6  # strength for VdW sphere gradient darken
+    vdw_interlocking: bool = False  # interlocked silhouettes for the --vdw overlay layer
+    atom_interlocking: bool = False  # interlocked silhouettes for primary atom spheres (e.g. --config vdw)
+    vdw_interlock_samples: int = (
+        64  # perimeter samples per sphere on the silhouette great circle (shared by both paths)
+    )
+    vdw_outline_width: float | None = None  # overlay outline width; None inherits atom_stroke_width, 0 = no outline
+    vdw_outline_color: str | None = None  # overlay outline colour; None inherits atom_stroke_color
+    vdw_h_scale: float = 0.7  # hydrogen radius shrink on the --vdw overlay; independent of primary h_scale
+    h_scale: float = 0.6  # hydrogen radius shrink for primary atom rendering (~0.6 ball-and-stick, ~0.8 CPK)
     auto_orient: bool = False
     # Kabsch/MCS alignment applied when merging an overlay or ensemble frames.
     # Disable with --no-align to keep each structure's raw coordinates.
@@ -322,6 +342,8 @@ class RenderConfig:
     mo_neg_color: str = _DEFAULT_MO_NEG_COLOR
     mo_blur_sigma: float = _DEFAULT_MO_BLUR_SIGMA
     mo_upsample_factor: int = _DEFAULT_MO_UPSAMPLE_FACTOR
+    mo_outline_width: float = 0.0  # 0 = no outline (solid surface mode only)
+    mo_outline_color: str = "#000000"
     dens_isovalue: float = _DEFAULT_DENS_ISOVALUE
     dens_color: str = _DEFAULT_DENS_COLOR
     nci_isovalue: float = _DEFAULT_NCI_ISOVALUE

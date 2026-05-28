@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import threading
 from typing import NamedTuple
 
 import networkx as nx
@@ -33,23 +34,38 @@ from xyzrender.hull import (
     hull_facets_svg,
     normalize_hull_subsets,
 )
-from xyzrender.mo import (
-    classify_mo_lobes,
-    mo_back_lobes_svg,
-    mo_front_lobes_svg,
-)
+from xyzrender.interlock import compute_interlock_polygons
+from xyzrender.mo import mo_lobe_svg_items
 from xyzrender.types import BondStyle, RenderConfig
 from xyzrender.utils import pca_orient
 
 logger = logging.getLogger(__name__)
 
 _render_counter = itertools.count()  # unique ID prefix per render call (SVG ids are global in Jupyter HTML)
+_render_counter_lock = threading.Lock()
+
+
+def _next_render_id() -> int:
+    """Atomic increment of the SVG id counter — safe under free-threaded Python."""
+    with _render_counter_lock:
+        return next(_render_counter)
+
+
 _RADIUS_SCALE = 0.075  # VdW → atoms display radius
 _REF_SPAN = 6.0  # reference molecular span (Å) for proportional bond/stroke scaling
 _REF_CANVAS = 800  # reference canvas size (px) — bond/label widths are defined at this size
 _CENTROID_VDW = 0.5  # VdW radius (Å) for NCI pi-system centroid dummy nodes
-_H_ATOM_SCALE = 0.6  # display-radius shrink factor for H atoms (ball-and-stick)
-_H_VDW_SCALE = 0.65  # VdW-sphere shrink factor for H atoms
+
+
+def _sphere_gradient_def(gid: str, xi: float, yi: float, r_px: float, stops: list[tuple[str, str]]) -> str:
+    """User-space radial gradient centred on the projected sphere, focal upper-left."""
+    stops_xml = "".join(f'<stop offset="{off}" stop-color="{col}"/>' for off, col in stops)
+    return (
+        f'<defs><radialGradient id="{gid}" gradientUnits="userSpaceOnUse" '
+        f'cx="{round(xi)}" cy="{round(yi)}" r="{round(r_px * 1.32)}" '
+        f'fx="{round(xi - r_px * 0.34)}" fy="{round(yi - r_px * 0.34)}">'
+        f"{stops_xml}</radialGradient></defs>"
+    )
 
 
 class _BondAttrs(NamedTuple):
@@ -131,7 +147,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             cfg.pore_centroids = [(float(r[0]), float(r[1]), float(r[2])) for r in _rotated]
 
     raw_vdw = np.array(
-        [_CENTROID_VDW if s == "*" else DATA.vdw.get(s, 1.5) * (_H_ATOM_SCALE if s == "H" else 1.0) for s in symbols]
+        [_CENTROID_VDW if s == "*" else DATA.vdw.get(s, 1.5) * (cfg.h_scale if s == "H" else 1.0) for s in symbols]
     )
     # Per-atom absolute scale: start from cfg (or style-region _acfg), then
     # overlay / ensemble extras replace it when structure_atom_scale is set.
@@ -149,22 +165,22 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
     _per_atom_mult: np.ndarray | None = None
     if cfg.radius_scale:
         from xyzrender.selectors import resolve_atom_indices
-        from xyzrender.utils import parse_atom_indices
 
         _per_atom_mult = np.ones(n)
         for spec, factor in cfg.radius_scale:
             if isinstance(spec, str):
                 indices = resolve_atom_indices(spec, graph)
             else:
-                indices = set(parse_atom_indices(spec))  # 1-indexed list → 0-indexed
+                indices = resolve_atom_indices(",".join(str(i) for i in spec), graph)
             for idx in indices:
                 if 0 <= idx < n:
                     _per_atom_mult[idx] *= factor
         radii = radii * _per_atom_mult
 
-    # VdW sphere radii use a separate (larger) H scaling
+    # Overlay uses its own H scale so --vdw looks consistent regardless of
+    # which primary preset is active.
     raw_vdw_sphere = np.array(
-        [_CENTROID_VDW if s == "*" else DATA.vdw.get(s, 1.5) * (_H_VDW_SCALE if s == "H" else 1.0) for s in symbols]
+        [_CENTROID_VDW if s == "*" else DATA.vdw.get(s, 1.5) * (cfg.vdw_h_scale if s == "H" else 1.0) for s in symbols]
     )
     if _per_atom_mult is not None:
         raw_vdw_sphere = raw_vdw_sphere * _per_atom_mult
@@ -373,6 +389,36 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
     # Pre-cache hex strings so .hex property isn't recomputed in the render loop
     _color_hex = [c.hex for c in colors]
 
+    # Centroids use their members' modal-element colour for the by_element split.
+    _endpoint_color = list(colors)
+    centroid_sites: dict[int, tuple[int, ...]] = {
+        **graph.graph.get("nci_centroid_sites", {}),
+        **graph.graph.get("haptic_centroid_sites", {}),
+    }
+    if centroid_sites:
+        from collections import Counter
+
+        _id_to_idx = {nid: idx for idx, nid in enumerate(node_ids)}
+        for cid, members in centroid_sites.items():
+            ai = _id_to_idx.get(cid)
+            if ai is None or not members:
+                continue
+            modal = Counter(graph.nodes[m]["symbol"] for m in members).most_common(1)[0][0]
+            _endpoint_color[ai] = get_color(DATA.s2n.get(modal, 0), cfg.color_overrides)
+    # Match the darker side of the solid-bond cylinder gradient.
+    if cfg.bond_gradient:
+        _bond_endpoint_hex = [
+            c.darken(
+                strength=cfg.bond_gradient_strength,
+                hue_shift_factor=cfg.hue_shift_factor,
+                light_shift_factor=cfg.light_shift_factor,
+                saturation_shift_factor=cfg.saturation_shift_factor,
+            ).hex
+            for c in _endpoint_color
+        ]
+    else:
+        _bond_endpoint_hex = [c.hex for c in _endpoint_color]
+
     # Bond lookup: per-edge attrs needed by the render loop.
     bonds: dict[tuple[int, int], _BondAttrs] = {}
     if not cfg.hide_bonds:
@@ -424,6 +470,12 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             if i < j:  # bonds has both (i,j) and (j,i); add once
                 bond_adj.setdefault(i, []).append(j)
                 bond_adj.setdefault(j, []).append(i)
+
+    _has_solid_bond: set[int] = set()
+    for (i, j), attrs in bonds.items():
+        if attrs.style == BondStyle.SOLID:
+            _has_solid_bond.add(i)
+            _has_solid_bond.add(j)
 
     # Only hide C-H hydrogens (not O-H, N-H, free H, etc.)
     hidden = set()
@@ -599,34 +651,6 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     f"</radialGradient>"
                 )
         svg.append("  </defs>")
-
-    # MO lobe front/back classification
-    mo_is_front = None
-    if cfg.mo_contours is not None:
-        mo = cfg.mo_contours
-        if cfg.flat_mo:
-            mo_is_front = [True] * len(mo.lobes)
-        else:
-            mo_is_front = classify_mo_lobes(mo.lobes, float(pos[:, 2].mean()))
-
-    # --- Back MO orbital lobes (behind molecule) — flat faded fill ---
-    if cfg.mo_contours is not None:
-        assert mo_is_front is not None
-        svg.extend(
-            mo_back_lobes_svg(
-                cfg.mo_contours,
-                mo_is_front,
-                cfg.surface_opacity,
-                scale,
-                cx,
-                cy,
-                canvas_w,
-                canvas_h,
-                surface_style=cfg.surface_style,
-                stroke_width=_mesh_sw,
-                mesh_inner_width=_mesh_inner_sw,
-            )
-        )
 
     # --- Convex hull facets (low-alpha plane behind molecule) ---
     if cfg.show_convex_hull:
@@ -812,39 +836,35 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 f'stroke-dasharray="{cell_dash}" stroke-linecap="round"/>'
             )
 
-    # NCI patches are z-sorted into the atom/bond loop so they appear at the correct
-    # depth (in the interstitial space) rather than covering the whole molecule.
-    nci_lobes_flat: list[tuple[float, list[str]]] = []
-    nci_lobe_idx = 0
+    # Surface overlays (NCI patches, pore spheres, MO lobes) share one z-sorted
+    # queue so each item interleaves with atoms at its own depth.  Drained
+    # back-to-front in the atom loop.
+    _overlays: list[tuple[float, list[str]]] = []
+    _overlay_idx = 0
+
     if cfg.nci_contours is not None:
         from xyzrender.nci import nci_lobe_svg_items, nci_static_svg_defs
 
         if cfg.nci_contours.raster_png:
             svg.extend(nci_static_svg_defs(cfg.nci_contours, scale, cx, cy, canvas_w, canvas_h))
-        nci_lobes_flat = nci_lobe_svg_items(
-            cfg.nci_contours,
-            cfg.surface_opacity,
-            scale,
-            cx,
-            cy,
-            canvas_w,
-            canvas_h,
-            surface_style=cfg.surface_style,
-            stroke_width=_mesh_sw,
-            mesh_inner_width=_mesh_inner_sw,
+        _overlays.extend(
+            nci_lobe_svg_items(
+                cfg.nci_contours,
+                cfg.surface_opacity,
+                scale,
+                cx,
+                cy,
+                canvas_w,
+                canvas_h,
+                surface_style=cfg.surface_style,
+                stroke_width=_mesh_sw,
+                mesh_inner_width=_mesh_inner_sw,
+            )
         )
-
-    def _drain_nci(next_z: float) -> None:
-        nonlocal nci_lobe_idx
-        while nci_lobe_idx < len(nci_lobes_flat) and nci_lobes_flat[nci_lobe_idx][0] < next_z:
-            svg.extend(nci_lobes_flat[nci_lobe_idx][1])
-            nci_lobe_idx += 1
 
     # --- Pore volume spheres (z-interleaved) ---
     # Uses cfg.pore_node_ids: list of node-ID lists per pore.
     # Centroid + radius computed from oriented positions (post-PCA).
-    pore_spheres_flat: list[tuple[float, list[str]]] = []
-    pore_sphere_idx = 0
     if cfg.pore_spheres and cfg.pore_node_ids:
         from xyzrender.hull import pore_size_colors
 
@@ -896,14 +916,48 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 f'  <circle cx="{sx:.1f}" cy="{sy:.1f}" r="{sr:.1f}" '
                 f'fill="url(#{gid})" fill-opacity="{cfg.pore_sphere_opacity:.2f}" stroke="none"/>'
             ]
-            pore_spheres_flat.append((z_depth, sphere_svg))
-        pore_spheres_flat.sort(key=lambda x: x[0])
+            _overlays.append((z_depth, sphere_svg))
 
-    def _drain_pore_spheres(next_z: float) -> None:
-        nonlocal pore_sphere_idx
-        while pore_sphere_idx < len(pore_spheres_flat) and pore_spheres_flat[pore_sphere_idx][0] < next_z:
-            svg.extend(pore_spheres_flat[pore_sphere_idx][1])
-            pore_sphere_idx += 1
+    # --- MO orbital lobes (z-interleaved) ---
+    if cfg.mo_contours is not None:
+        # Each lobe resolves its queue-z against the atoms it overlaps in 2D
+        # (see :func:`_lobe_effective_z`); fog z-range matches the atom loop's.
+        _mo_fog_z_front = float(pos[:, 2].max())
+        _mo_fog_z_range = float(max(pos[:, 2].max() - pos[:, 2].min(), 1e-6))
+        _overlays.extend(
+            mo_lobe_svg_items(
+                cfg.mo_contours,
+                cfg.surface_opacity,
+                scale,
+                cx,
+                cy,
+                canvas_w,
+                canvas_h,
+                surface_style=cfg.surface_style,
+                stroke_width=_mesh_sw,
+                mesh_inner_width=_mesh_inner_sw,
+                flat=cfg.flat_mo,
+                outline_width=cfg.mo_outline_width * scale_ratio,
+                outline_color=cfg.mo_outline_color,
+                atom_pos=pos,
+                atom_radii=_atom_r3d,
+                fog_enabled=cfg.fog,
+                fog_strength=cfg.fog_strength,
+                fog_rgb=fog_rgb,
+                fog_z_front=_mo_fog_z_front,
+                fog_z_range=_mo_fog_z_range,
+            )
+        )
+
+    # Stable sort preserves insertion order for ties, so internally-z-sorted
+    # NCI items stay coherent against MO / pore items at the same depth.
+    _overlays.sort(key=lambda x: x[0])
+
+    def _drain_overlays(next_z: float) -> None:
+        nonlocal _overlay_idx
+        while _overlay_idx < len(_overlays) and _overlays[_overlay_idx][0] < next_z:
+            svg.extend(_overlays[_overlay_idx][1])
+            _overlay_idx += 1
 
     # Interleaved z-order: for each atom, render it then its bonds to deeper atoms
 
@@ -1056,9 +1110,16 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
         stroke_i,
         stroke_j,
         stroke_w,
+        phase="both",
     ):
-        """Dispatch a single bond line — element-coloured or uniform."""
-        if stroke_i and stroke_w > 0:
+        """Dispatch a single bond line — element-coloured or uniform.
+
+        ``phase``: ``"both"`` → outline to back-layer + fill inline;
+        ``"outline"`` or ``"fill"`` → only that part, inline.  Outline is
+        a wider round-capped line at the same endpoints as the fill.
+        """
+        emit_outline = phase != "fill" and stroke_i and stroke_w > 0
+        if emit_outline:
             stroke = stroke_i
             if stroke_j and stroke_j != stroke_i:
                 sid = f"bo{next(_bs_counter)}"
@@ -1071,10 +1132,16 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 )
                 stroke = f"url(#{sid})"
             ow = w + 2 * stroke_w
-            _bond_outline_layer.append(
+            line = (
                 f'  <line x1="{lx1:.1f}" y1="{ly1:.1f}" x2="{lx2:.1f}" y2="{ly2:.1f}" '
                 f'stroke="{stroke}" stroke-width="{ow:.1f}" stroke-linecap="round"{dash}{op_attr}/>'
             )
+            if phase == "both":
+                _bond_outline_layer.append(line)
+            else:
+                svg.append(line)
+        if phase == "outline":
+            return
         if by_element:
             _element_line(
                 lx1,
@@ -1108,6 +1175,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
         width_override: float | None = None,
         outline_width_override: float | None = None,
         outline_color_override: str | None = None,
+        phase: str = "both",
     ):
         """Render bond — closure captures shared rendering state."""
         # Config: use base config unless style regions exist and bond is solid
@@ -1148,7 +1216,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             _gap = bcfg.bond_gap * _bw
         if style == BondStyle.DASHED and bcfg.ts_color is not None:
             _bond_color = bcfg.ts_color
-        if style == BondStyle.DOTTED and bcfg.nci_color is not None:
+        elif style == BondStyle.DOTTED and bcfg.nci_color is not None:
             _bond_color = bcfg.nci_color
 
         if bcfg.skeletal_style:
@@ -1184,11 +1252,19 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             return
         x1, y1, x2, y2, px, py = _bg
 
-        by_element = bcfg.bond_color_by_element and color_override is None and style == BondStyle.SOLID
+        by_element = (
+            color_override is None
+            and bcfg.bond_color_by_element
+            and (
+                style == BondStyle.SOLID
+                or (style == BondStyle.DASHED and bcfg.ts_element and bcfg.ts_color is None)
+                or (style == BondStyle.DOTTED and bcfg.nci_element and bcfg.nci_color is None)
+            )
+        )
         ci_hex = cj_hex = color = ""
         if by_element:
-            ci_hex = _color_hex[ai]
-            cj_hex = _color_hex[aj]
+            ci_hex = _bond_endpoint_hex[ai]
+            cj_hex = _bond_endpoint_hex[aj]
         else:
             color = color_override if color_override is not None else _bond_color
             if cfg.fog:
@@ -1208,14 +1284,15 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             _sj = blend_fog(_stroke_color, fog_rgb, _fj)
 
         if style == BondStyle.DASHED:
-            dd, gg = _bw * 1.2, _bw * 2.2
+            _dm, _gm = bcfg.ts_dash
+            dd, gg = _bw * _dm, _bw * _gm
             dash = f' stroke-dasharray="{dd:.1f},{gg:.1f}"'
             _emit_line(
                 x1,
                 y1,
                 x2,
                 y2,
-                _bw * 1.2,
+                _bw * bcfg.ts_width,
                 color,
                 px,
                 py,
@@ -1232,17 +1309,19 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 stroke_i=_si,
                 stroke_j=_sj,
                 stroke_w=_stroke_width,
+                phase=phase,
             )
             return
         if style == BondStyle.DOTTED:
-            dd, gg = _bw * 0.08, _bw * 2
+            _dm, _gm = bcfg.nci_dash
+            dd, gg = _bw * _dm, _bw * _gm
             dash = f' stroke-dasharray="{dd:.1f},{gg:.1f}"'
             _emit_line(
                 x1,
                 y1,
                 x2,
                 y2,
-                _bw,
+                _bw * bcfg.nci_width,
                 color,
                 px,
                 py,
@@ -1259,6 +1338,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 stroke_i=_si,
                 stroke_j=_sj,
                 stroke_w=_stroke_width,
+                phase=phase,
             )
             return
 
@@ -1291,6 +1371,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     stroke_i=_si,
                     stroke_j=_sj,
                     stroke_w=_stroke_width,
+                    phase=phase,
                 )
         else:
             nb = max(1, round(bo))
@@ -1319,6 +1400,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     stroke_i=_si,
                     stroke_j=_sj,
                     stroke_w=_stroke_width,
+                    phase=phase,
                 )
 
     # --- Vectorized bond geometry precomputation ---
@@ -1374,6 +1456,22 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     bond_geom[(ai_k, aj_k)] = bond_geom[(aj_k, ai_k)] = None
 
     _molecule_insert_idx = len(svg)
+
+    # With atom discs at both ends: outline before atom, fill after — disc
+    # masks the central join.  Without (atom_scale==0 at either end): the
+    # outline goes to one back-layer below the bonds, joint hidden by fills.
+    def _bond_interleaved(ai_b: int, aj_b: int) -> bool:
+        return _atom_scale_per[ai_b] > 0 and _atom_scale_per[aj_b] > 0
+
+    # Interlocking primary atom spheres (--config vdw): pre-compute the
+    # visibility polygon for each atom that 2D-overlaps a neighbour.  Atoms
+    # with no overlap stay None and emit as plain <circle>.
+    _atom_polys: list[np.ndarray | None] | None = None
+    if cfg.atom_interlocking and n > 0:
+        _il_radii = radii.copy()
+        if hidden:
+            _il_radii[list(hidden)] = 0.0
+        _atom_polys = compute_interlock_polygons(pos, _il_radii, samples=cfg.vdw_interlock_samples)
     for idx, ai in enumerate(z_order):
         # Flush all vectors whose origin depth <= this atom's depth.  The hidden
         # check is intentionally after the flush so hidden atoms still act as
@@ -1405,14 +1503,56 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
         if ai in hidden:
             continue
 
-        # Drain NCI patches and pore spheres that belong behind this atom
-        if nci_lobes_flat:
-            _drain_nci(float(pos[ai][2]))
-        if pore_spheres_flat:
-            _drain_pore_spheres(float(pos[ai][2]))
+        # Drain surface overlays (NCI / pore / MO) that belong behind this atom
+        if _overlays:
+            _drain_overlays(float(pos[ai][2]))
+
+        is_image = _is_image[ai]
+        # Outgoing bonds to deeper atoms, sorted shallowest-last so front
+        # bonds paint on top at crossings.  Resolved once; the interleaved
+        # path consumes it twice (outline, then fill).
+        _outgoing_bonds: list[tuple[int, _BondAttrs, float]] = []
+        if not cfg.hide_bonds and bw > 0:
+            for aj_int in bond_adj.get(ai, ()):
+                if aj_int in hidden or _z_rank[aj_int] <= idx:
+                    continue
+                battrs = bonds[(ai, aj_int)]
+                _aj_image = _is_image[aj_int]
+                _aj_struct_op = struct_opacities[aj_int] if not _aj_image else None
+                _ai_struct_op = struct_opacities[ai]
+                if is_image or _aj_image:
+                    bond_op = cfg.periodic_image_opacity
+                elif _ai_struct_op is not None or _aj_struct_op is not None:
+                    bond_op = min(v for v in (_ai_struct_op, _aj_struct_op) if v is not None)
+                else:
+                    bond_op = 1.0
+                _diff_op = _diffuse_op.get((ai, aj_int))
+                if _diff_op is not None:
+                    bond_op = min(bond_op, _diff_op)
+                if bond_op < 0.01:
+                    continue
+                _outgoing_bonds.append((aj_int, battrs, bond_op))
+            _outgoing_bonds.sort(key=lambda b: _z_rank[b[0]])
+
+        # Phase 1 — outlines first; atom disc next will mask the central join.
+        if _outgoing_bonds:
+            for aj_int, battrs, bond_op in _outgoing_bonds:
+                if not _bond_interleaved(ai, aj_int):
+                    continue
+                add_bond(
+                    ai,
+                    aj_int,
+                    battrs.order,
+                    battrs.style,
+                    opacity=bond_op,
+                    color_override=battrs.color,
+                    width_override=battrs.width,
+                    outline_width_override=battrs.outline_width,
+                    outline_color_override=battrs.outline_color,
+                    phase="outline",
+                )
 
         xi, yi = _px[ai], _py[ai]
-        is_image = _is_image[ai]
         if is_image:
             atom_op = cfg.periodic_image_opacity
         elif struct_opacities[ai] is not None:
@@ -1446,22 +1586,68 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     label_color_override=acfg.skeletal_label_color,
                 )
         else:
-            # Atom circle (gradient or flat fill)
+            # Atom circle (gradient or flat fill).  When this atom has an
+            # interlock polygon (overlaps a neighbour in 2D), the main fill
+            # is a <polygon>; otherwise a <circle>.  Glow stays a circle —
+            # it's a blurred background, not a hard silhouette.
             _sw_ai = _atom_sw[ai] if _atom_sw is not None else sw
             _grad_ai = _atom_use_grad[ai] if _atom_use_grad is not None else use_grad
             _stroke_src = struct_stroke_colors[ai] or acfg.atom_stroke_color
             _stroke_atom = _color_hex[ai] if _stroke_src == "atom" else _stroke_src
             dof_attr = f' filter="url(#dof{dof_buckets[ai]})"' if cfg.dof else ""
+            _poly_xy = _atom_polys[ai] if _atom_polys is not None else None
+            _r_px = radii[ai] * scale
+            # Atoms with only TS/NCI edges (or none) lose position info at
+            # atom_scale=0 — bump to a dot 20% wider than the bond, matching
+            # the bond outline and (if cylinders are shaded) cylinder gradient.
+            _dot_r = (bw / 2) * 1.2
+            if (
+                _r_px < _dot_r
+                and bw > 0
+                and not is_image
+                and symbols[ai] != "*"
+                and ai not in _has_solid_bond
+                and _poly_xy is None
+            ):
+                _r_px = _dot_r
+                if _sw_ai < cfg.bond_outline_width * scale_ratio:
+                    _sw_ai = cfg.bond_outline_width * scale_ratio
+                    _stroke_atom = cfg.bond_outline_color
+                if cfg.bond_gradient:
+                    _grad_ai = True
+            if _poly_xy is not None:
+                _pxs = canvas_w / 2 + scale * (_poly_xy[:, 0] - cx)
+                _pys = canvas_h / 2 - scale * (_poly_xy[:, 1] - cy)
+                _pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(_pxs, _pys, strict=True))
+                _shape_geom = f'<polygon points="{_pts_str}"'
+            else:
+                _shape_geom = f'<circle cx="{xi:.1f}" cy="{yi:.1f}" r="{_r_px:.1f}"'
+
             if ai in glow_indices:
                 _glow_fill = colors[ai].blend(WHITE, acfg.atom_wash).hex if acfg.atom_wash > 0 else _color_hex[ai]
                 if cfg.fog:
                     _glow_fill = blend_fog(_glow_fill, fog_rgb, fog_f[ai])
                 svg.append(
-                    f'  <circle cx="{xi:.1f}" cy="{yi:.1f}" r="{radii[ai] * scale:.1f}" '
+                    f'  <circle cx="{xi:.1f}" cy="{yi:.1f}" r="{_r_px:.1f}" '
                     f'fill="{_glow_fill}" filter="url(#glow)"{op_attr_atom}/>'
                 )
             if _grad_ai:
-                if use_per_atom_grad:
+                # Inline gradient def when no shared def exists for this atom:
+                # interlock polygons (anchored at sphere centre, not the
+                # polygon's bounding box), or tube/wire dot fallbacks promoted
+                # to gradient without cfg.gradient being set.
+                if _poly_xy is not None or not use_grad:
+                    hi, me, lo = get_gradient_colors(colors[ai], acfg, strength=acfg.atom_gradient_strength)
+                    if cfg.fog:
+                        t = min(fog_f[ai] ** 2 * 0.7, 0.70)
+                        hi, me, lo = hi.blend(WHITE, t), me.blend(WHITE, t), lo.blend(WHITE, t)
+                    grad_id = f"p{ai}"
+                    svg.append(
+                        "  "
+                        + _sphere_gradient_def(grad_id, xi, yi, _r_px, [("0%", hi.hex), (".4", me.hex), ("1", lo.hex)])
+                    )
+                    fs_atom = blend_fog(_stroke_atom, fog_rgb, fog_f[ai]) if use_per_atom_grad else _stroke_atom
+                elif use_per_atom_grad:
                     grad_id = f"g{ai}"
                     fs_atom = atom_fog_stroke[ai]
                 else:
@@ -1471,7 +1657,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     grad_id = f"g{gid_suffix}"
                     fs_atom = _stroke_atom
                 svg.append(
-                    f'  <circle cx="{xi:.1f}" cy="{yi:.1f}" r="{radii[ai] * scale:.1f}" '
+                    f"  {_shape_geom} "
                     f'fill="url(#{grad_id})" stroke="{fs_atom}" stroke-width="{_sw_ai:.1f}"{op_attr_atom}{dof_attr}/>'
                 )
             else:
@@ -1481,7 +1667,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     fill = blend_fog(fill, fog_rgb, fog_f[ai])
                     stroke = blend_fog(stroke, fog_rgb, fog_f[ai])
                 svg.append(
-                    f'  <circle cx="{xi:.1f}" cy="{yi:.1f}" r="{radii[ai] * scale:.1f}" '
+                    f"  {_shape_geom} "
                     f'fill="{fill}" stroke="{stroke}" stroke-width="{_sw_ai:.1f}"{op_attr_atom}{dof_attr}/>'
                 )
 
@@ -1502,48 +1688,30 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 _deferred_atom_layers.extend(svg[_atom_layer_start:])
                 del svg[_atom_layer_start:]
 
-        # Bonds to deeper atoms (adjacency list → O(degree) instead of O(n))
-        if not cfg.hide_bonds and bw > 0:
-            for aj_int in bond_adj.get(ai, ()):
-                if aj_int in hidden or _z_rank[aj_int] <= idx:
-                    continue
-                battrs = bonds[(ai, aj_int)]
-                # Use periodic_image_opacity if either endpoint is an image atom
-                _aj_image = _is_image[aj_int]
-                _aj_struct_op = struct_opacities[aj_int] if not _aj_image else None
-                _ai_struct_op = struct_opacities[ai]
-                if is_image or _aj_image:
-                    bond_op = cfg.periodic_image_opacity
-                elif _ai_struct_op is not None or _aj_struct_op is not None:
-                    bond_op = min(v for v in (_ai_struct_op, _aj_struct_op) if v is not None)
-                else:
-                    bond_op = 1.0
-                # Diffuse GIF: fade stretched bonds
-                _diff_op = _diffuse_op.get((ai, aj_int))
-                if _diff_op is not None:
-                    bond_op = min(bond_op, _diff_op)
-                if bond_op < 0.01:
-                    continue  # skip invisible bonds
-                add_bond(
-                    ai,
-                    aj_int,
-                    battrs.order,
-                    battrs.style,
-                    opacity=bond_op,
-                    color_override=battrs.color,
-                    width_override=battrs.width,
-                    outline_width_override=battrs.outline_width,
-                    outline_color_override=battrs.outline_color,
-                )
+        # Phase 2 — fills on top of the atom disc (stick-into-ball).  No
+        # disc: phase="both" also emits the back-layer outline.
+        for aj_int, battrs, bond_op in _outgoing_bonds:
+            _fill_phase = "fill" if _bond_interleaved(ai, aj_int) else "both"
+            add_bond(
+                ai,
+                aj_int,
+                battrs.order,
+                battrs.style,
+                opacity=bond_op,
+                color_override=battrs.color,
+                width_override=battrs.width,
+                outline_width_override=battrs.outline_width,
+                outline_color_override=battrs.outline_color,
+                phase=_fill_phase,
+            )
 
     # Insert edge stroke shadow layer at the base of the molecule group
     if _bond_outline_layer:
         svg[_molecule_insert_idx:_molecule_insert_idx] = _bond_outline_layer
 
-    # NCI patches in front of all atoms (z_depth > frontmost atom)
-    while nci_lobe_idx < len(nci_lobes_flat):
-        svg.extend(nci_lobes_flat[nci_lobe_idx][1])
-        nci_lobe_idx += 1
+    # Drain any remaining surface overlays (z_depth > frontmost atom)
+    if _overlays:
+        _drain_overlays(float("inf"))
 
     # Flush any vectors whose origin is in front of all atoms
     while _pv_pos < len(_pending_vecs):
@@ -1584,29 +1752,6 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     draw_shaft=False,
                 )
 
-    # Drain remaining pore spheres (in front of all atoms)
-    if pore_spheres_flat:
-        _drain_pore_spheres(float("inf"))
-
-    # --- Front MO orbital lobes (on top of molecule) ---
-    if cfg.mo_contours is not None:
-        assert mo_is_front is not None
-        svg.extend(
-            mo_front_lobes_svg(
-                cfg.mo_contours,
-                mo_is_front,
-                cfg.surface_opacity,
-                scale,
-                cx,
-                cy,
-                canvas_w,
-                canvas_h,
-                surface_style=cfg.surface_style,
-                stroke_width=_mesh_sw,
-                mesh_inner_width=_mesh_inner_sw,
-            )
-        )
-
     # --- Density surface (stacked z-layers on top of molecule) ---
     if cfg.dens_contours is not None:
         svg.extend(
@@ -1633,11 +1778,54 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
     # VdW surface overlay — on top of molecule, group opacity for proper occlusion
     if vdw_set is not None:
         svg.append(f'  <g opacity="{cfg.vdw_opacity}">')
+        # Interlocking: compute visibility polygons once for the active VdW set,
+        # then per atom emit polygon (overlap) or <circle> (singleton).
+        _interlock_polys: list[np.ndarray | None] | None = None
+        if cfg.vdw_interlocking and vdw_set:
+            # Drop out-of-range indices (the --vdw selector can return graph IDs
+            # outside the in-memory position array).
+            _active = np.fromiter((ai for ai in sorted(vdw_set) if 0 <= ai < n), dtype=np.intp)
+            if _active.size:
+                _vdw_r3d = raw_vdw_sphere[_active] * cfg.vdw_scale
+                _polys_sub = compute_interlock_polygons(pos[_active], _vdw_r3d, samples=cfg.vdw_interlock_samples)
+                _interlock_polys = [None] * n
+                for k, ai in enumerate(_active.tolist()):
+                    _interlock_polys[ai] = _polys_sub[k]
+        # Independent overlay outline: vdw_outline_width / vdw_outline_color
+        # fall back to atom_stroke_width / atom_stroke_color when None.
+        _vdw_sw_raw = cfg.vdw_outline_width if cfg.vdw_outline_width is not None else cfg.atom_stroke_width
+        _vdw_sw = _vdw_sw_raw * scale_ratio
+        _vdw_sc = cfg.vdw_outline_color if cfg.vdw_outline_color is not None else cfg.atom_stroke_color
+        _vdw_grad_counter = itertools.count()
         for ai in z_order:
-            if ai in vdw_set:
+            if ai not in vdw_set:
+                continue
+            stroke_attr = ""
+            if _vdw_sw > 0:
+                _stroke_col = _color_hex[ai] if _vdw_sc == "atom" else _vdw_sc
+                stroke_attr = f' stroke="{_stroke_col}" stroke-width="{_vdw_sw:.1f}" stroke-linejoin="round"'
+            poly = _interlock_polys[ai] if _interlock_polys is not None else None
+            if poly is not None:
+                xi, yi = _proj(pos[ai], scale, cx, cy, canvas_w, canvas_h)
+                vr = raw_vdw_sphere[ai] * cfg.vdw_scale * scale
+                lo = colors[ai].darken(
+                    strength=cfg.vdw_gradient_strength,
+                    hue_shift_factor=cfg.hue_shift_factor,
+                    light_shift_factor=cfg.light_shift_factor,
+                    saturation_shift_factor=cfg.saturation_shift_factor,
+                )
+                gid = f"vgi{next(_vdw_grad_counter)}"
+                svg.append("    " + _sphere_gradient_def(gid, xi, yi, vr, [("0%", colors[ai].hex), ("1", lo.hex)]))
+                xs = canvas_w / 2 + scale * (poly[:, 0] - cx)
+                ys = canvas_h / 2 - scale * (poly[:, 1] - cy)
+                pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys, strict=True))
+                svg.append(f'    <polygon points="{pts}" fill="url(#{gid})"{stroke_attr}/>')
+            else:
                 vr = raw_vdw_sphere[ai] * cfg.vdw_scale * scale
                 xi, yi = _proj(pos[ai], scale, cx, cy, canvas_w, canvas_h)
-                svg.append(f'    <circle cx="{xi:.1f}" cy="{yi:.1f}" r="{vr:.1f}" fill="url(#vg{a_nums[ai]})"/>')
+                svg.append(
+                    f'    <circle cx="{xi:.1f}" cy="{yi:.1f}" r="{vr:.1f}" fill="url(#vg{a_nums[ai]})"{stroke_attr}/>'
+                )
         svg.append("  </g>")
 
     # --- Annotations (bond/angle/dihedral/custom labels, always on top) ---
@@ -1682,7 +1870,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
     # a unique token so each SVG is self-contained regardless of embedding context.
     # Skip when _unique_ids=False (GIF frames: converted to PNG immediately, never shown as SVG).
     if _unique_ids:
-        p = f"x{next(_render_counter)}"
+        p = f"x{_next_render_id()}"
         raw = raw.replace('id="', f'id="{p}')
         raw = raw.replace('href="#', f'href="#{p}')
         raw = raw.replace("url(#", f"url(#{p}")

@@ -83,6 +83,7 @@ Styling:
 
 Display:
   --hy [ATOMS] / --no-hy  Show/hide H atoms (all or specific indices)
+  --only / --exclude      Keep or remove selected atoms before rendering
   --bo / --no-bo          Show/hide bond orders
   --unbond SPEC           Hide bonds: M-L  sbm  Fe-het  1-3  pi  all
   --bond PAIR             Force-show bonds: 1-3  4-5
@@ -241,6 +242,24 @@ def main() -> None:
     style_g.add_argument("--atom-gradient-strength", type=float, default=None, help="Atom gradient strength")
     style_g.add_argument("--bond-gradient-strength", type=float, default=None, help="Bond gradient strength")
     style_g.add_argument("--vdw-gradient-strength", type=float, default=None, help="VdW sphere gradient strength")
+    style_g.add_argument(
+        "--vdw-interlocking",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Draw the --vdw overlay as interlocked silhouettes (default: on)",
+    )
+    style_g.add_argument(
+        "--atom-interlocking",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Draw primary atom spheres as interlocked silhouettes (default: off; on in --config vdw)",
+    )
+    style_g.add_argument(
+        "--vdw-outline-width", type=float, default=None, help="VdW overlay outline width (0 = no outline)"
+    )
+    style_g.add_argument("--vdw-outline-color", type=str, default=None, help="VdW overlay outline colour")
+    style_g.add_argument("--h-scale", type=float, default=None, help="H atom radius scale (primary atoms)")
+    style_g.add_argument("--vdw-h-scale", type=float, default=None, help="H atom radius scale on the --vdw overlay")
 
     # --- Display ---
     disp_g = p.add_argument_group("display")
@@ -253,6 +272,26 @@ def main() -> None:
         help='Show H atoms (no args=all, or indices like "1-5,8")',
     )
     disp_g.add_argument("--no-hy", action="store_true", default=False, help="Hide all H atoms")
+    disp_g.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="ATOMS",
+        help=(
+            'Render only selected atoms: --only "1-24" or --only "C,N,O". Repeatable. '
+            "Cube/surface fields (--mo, --dens, --esp, --nci) are not cropped to the filter."
+        ),
+    )
+    disp_g.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="ATOMS",
+        help=(
+            'Exclude selected atoms from the render: --exclude "25-40" or --exclude "Na,Cl". Repeatable. '
+            "Cube/surface fields (--mo, --dens, --esp, --nci) are not cropped to the filter."
+        ),
+    )
     disp_g.add_argument(
         "--no-bonds", action="store_true", default=False, help="Hide all bonds (e.g. space-filling style)"
     )
@@ -340,10 +379,19 @@ def main() -> None:
         "--flat-mo",
         action="store_true",
         default=False,
-        help="Disable MO depth classification (all lobes rendered as front)",
+        help="Disable depth-fog colour blend on MO lobes (textbook-style flat colours)",
     )
     surf_g.add_argument("--mo-blur", type=float, default=None, help="MO Gaussian blur sigma (default: 0.8)")
     surf_g.add_argument("--mo-upsample", type=int, default=None, help="MO upsample factor (default: 3)")
+    surf_g.add_argument(
+        "--mo-outline-width",
+        type=float,
+        nargs="?",
+        const=5.0,
+        default=None,
+        help="MO lobe outline width in px (bare flag = 5.0; 0 = off). Solid surface only.",
+    )
+    surf_g.add_argument("--mo-outline-color", default=None, help="MO lobe outline color (hex or named)")
     surf_g.add_argument("--opacity", type=float, default=None, help="Surface opacity (default: 1.0, >1 boosts)")
     surf_g.add_argument(
         "--surface-style",
@@ -437,7 +485,12 @@ def main() -> None:
         "--align-atoms",
         default=None,
         dest="align_atoms",
-        help='Atom indices (min 3) for alignment subset, e.g. "1,2,3", "1-6"',
+        help=(
+            "Alignment subset (min 3 atoms).  Numeric: 1-indexed IDs "
+            '("1,2,3" or "1-6").  Symbolic: element/category tokens '
+            '("M,L" picks the metal + its first coordination shell; '
+            '"Fe,P" picks Fe atoms and any P atoms bonded to them).'
+        ),
     )
     ov_g.add_argument(
         "--align",
@@ -492,6 +545,19 @@ def main() -> None:
         dest="overlay_bond_width",
         help="Bond width for the overlay only (mirrors --bond-width; independent of primary).",
     )
+    ov_g.add_argument(
+        "--overlay-ts",
+        action="store_true",
+        default=False,
+        dest="overlay_ts",
+        help="Run graphRC TS detection on the overlay (mirrors --ts)",
+    )
+    ov_g.add_argument(
+        "--overlay-ts-bond",
+        default="",
+        dest="overlay_ts_bond",
+        help='Manual TS bond pair(s) on the overlay, 1-indexed in the overlay\'s atom list: "1-6,3-4"',
+    )
     # Fine-tune overlay styling (atom_stroke_*, bond_color, bond_outline_*) lives
     # in preset JSON / OverlayConfig only — kept off the CLI to avoid flag bloat.
     ov_g.add_argument(
@@ -529,7 +595,28 @@ def main() -> None:
     ts_g.add_argument("--ts", action="store_true", dest="ts_detect", help="Auto-detect TS bonds via graphRC")
     ts_g.add_argument("--ts-frame", type=int, default=0, help="TS reference frame for graphRC (0-indexed)")
     ts_g.add_argument("--ts-bond", default="", help='Manual TS bond pair(s), 1-indexed: "1-6,3-4"')
-    ts_g.add_argument("--ts-color", default=None, help="Color for dashed TS bonds (hex or named)")
+    ts_g.add_argument(
+        "--ts-color", default=None, help="Flat colour for TS dashes (hex or named); overrides --ts-element"
+    )
+    ts_g.add_argument(
+        "--ts-element",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Atom-coloured halves on TS dashes (default off; needs a by_element preset)",
+    )
+    ts_g.add_argument(
+        "--ts-dash",
+        default=None,
+        metavar="LEN,GAP",
+        help="TS dash length,gap as bond_width multiples (default 1.2,2.2)",
+    )
+    ts_g.add_argument(
+        "--ts-width",
+        type=float,
+        default=None,
+        metavar="MULT",
+        help="TS line width as a bond_width multiple (default 1.2)",
+    )
     ts_g.add_argument(
         "--nci",
         action="store_true",
@@ -537,23 +624,50 @@ def main() -> None:
         help="Auto-detect NCI interactions via xyzgraph",
     )
     ts_g.add_argument("--nci-bond", default="", help='Manual NCI bond pair(s), 1-indexed: "1-5,2-8"')
-    ts_g.add_argument("--nci-color", default=None, help="Color for dotted NCI bonds (hex or named)")
+    ts_g.add_argument(
+        "--nci-color", default=None, help="Flat colour for NCI/haptic dots (hex or named); overrides --nci-element"
+    )
+    ts_g.add_argument(
+        "--nci-element",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Atom-coloured halves on NCI/haptic dots (default off; on in pmol/btube/tube/mtube)",
+    )
+    ts_g.add_argument(
+        "--nci-dash",
+        default=None,
+        metavar="LEN,GAP",
+        help="NCI/haptic dot length,gap as bond_width multiples (default 0.08,2.0)",
+    )
+    ts_g.add_argument(
+        "--nci-width",
+        type=float,
+        default=None,
+        metavar="MULT",
+        help="NCI/haptic line width as a bond_width multiple (default 1.0)",
+    )
 
     # --- GIF animation ---
     gif_g = p.add_argument_group("GIF animation")
     gif_g.add_argument("--gif-ts", action="store_true", help="TS vibration GIF (via graphRC)")
     gif_g.add_argument("--gif-trj", action="store_true", help="Trajectory/optimization GIF (multi-frame input)")
     gif_g.add_argument(
+        "--trj-bonds",
+        action="store_true",
+        help="Re-detect bonds for every frame (use for NEB-TS MEPs where connectivity changes)",
+    )
+    gif_g.add_argument(
         "--gif-rot",
         nargs="?",
         const="y",
         default=None,
-        help="Rotation GIF (default axis: y). Combinable with --gif-ts.",
+        help="Rotation GIF (default axis: y). Combinable with --gif-ts (also: --gif-bounce + --gif-ts).",
     )
     gif_g.add_argument("--gif-diffuse", action="store_true", help="Diffuse/assembly GIF — atoms scatter and reassemble")
     gif_g.add_argument("-go", "--gif-output", default=None, help="GIF output path")
     gif_g.add_argument("--gif-fps", type=int, default=10, help="GIF frames per second (default: 10)")
     gif_g.add_argument("--rot-frames", type=int, default=120, help="Rotation frames (default: 120)")
+    gif_g.add_argument("--vib-frames", type=int, default=None, help="Vibration frames for --gif-ts (default: 20)")
     gif_g.add_argument(
         "--gif-bounce",
         type=_parse_gif_bounce,
@@ -854,8 +968,16 @@ def main() -> None:
         bond_color=args.bond_color,
         bond_outline_color=args.bond_outline_color,
         bond_outline_width=args.bond_outline_width,
+        mo_outline_color=args.mo_outline_color,
+        mo_outline_width=args.mo_outline_width,
         ts_color=args.ts_color,
+        ts_element=args.ts_element,
+        ts_dash=args.ts_dash,
+        ts_width=args.ts_width,
         nci_color=args.nci_color,
+        nci_element=args.nci_element,
+        nci_dash=args.nci_dash,
+        nci_width=args.nci_width,
         background=args.background,
         transparent=args.transparent,
         gradient=args.grad,
@@ -944,8 +1066,8 @@ def main() -> None:
         _bounce_deg, _bounce_ax = args.gif_bounce
         if _bounce_deg <= 0:
             p.error("--gif-bounce must be > 0")
-        if args.gif_ts or args.gif_trj or args.gif_diffuse:
-            p.error("--gif-bounce cannot be combined with --gif-ts, --gif-trj, or --gif-diffuse")
+        if args.gif_trj or args.gif_diffuse:
+            p.error("--gif-bounce cannot be combined with --gif-trj or --gif-diffuse")
         if args.gif_rot:
             p.error("--gif-bounce cannot be combined with --gif-rot — set the axis as --gif-bounce DEG,AXIS")
 
@@ -1032,6 +1154,16 @@ def main() -> None:
         except ValueError as e:
             p.error(str(e))
 
+    if (args.only or args.exclude) and (args.gif_ts or args.gif_trj):
+        p.error("--only/--exclude are not supported with --gif-ts or --gif-trj")
+    if args.only or args.exclude:
+        from xyzrender.api import _filter_molecule_atoms
+
+        try:
+            mol = _filter_molecule_atoms(mol, only=args.only or None, exclude=args.exclude or None)
+        except (TypeError, ValueError) as e:
+            p.error(str(e))
+
     # Resolve atom-spec driven options now that atom symbols are available.
     from xyzrender.selectors import resolve_atom_indices
 
@@ -1040,6 +1172,21 @@ def main() -> None:
             cfg.vdw_indices = []
         else:
             cfg.vdw_indices = sorted(resolve_atom_indices(args.vdw, mol.graph))
+    # Interlock + scale flags: only override the preset when the user actually set them.
+    if args.vdw_interlocking is not None:
+        cfg.vdw_interlocking = args.vdw_interlocking
+    if args.atom_interlocking is not None:
+        cfg.atom_interlocking = args.atom_interlocking
+    if args.vdw_outline_width is not None:
+        cfg.vdw_outline_width = args.vdw_outline_width
+    if args.vdw_outline_color is not None:
+        from xyzrender.colors import resolve_color
+
+        cfg.vdw_outline_color = resolve_color(args.vdw_outline_color)
+    if args.h_scale is not None:
+        cfg.h_scale = args.h_scale
+    if args.vdw_h_scale is not None:
+        cfg.vdw_h_scale = args.vdw_h_scale
     if args.glow is not None:
         cfg.glow_indices = sorted(resolve_atom_indices(args.glow, mol.graph))
 
@@ -1072,7 +1219,15 @@ def main() -> None:
     if args.overlay and isinstance(args.overlay, str):
         _ov_charge = mol.graph.graph.get("total_charge", 0)
         _ov_mult = mol.graph.graph.get("multiplicity")
-        args.overlay = load(args.overlay, charge=_ov_charge, multiplicity=_ov_mult)
+        args.overlay = load(
+            args.overlay,
+            charge=_ov_charge,
+            multiplicity=_ov_mult,
+            ts_detect=args.overlay_ts,
+        )
+
+    if args.overlay_ts_bond:
+        cfg.overlay.ts_bonds = _parse_pairs(args.overlay_ts_bond)
 
     # --- Measurements (terminal output only) ---
     if args.measure is not None:
@@ -1125,10 +1280,11 @@ def main() -> None:
         except (ValueError, FileNotFoundError) as e:
             p.error(str(e))
 
-    # --- Parse align-atoms (comma-separated 1-indexed, e.g. "1,2,3" or "1-6") ---
-    _align_atoms: list[int] | None = None
-    if args.align_atoms is not None:
-        _align_atoms = parse_atom_indices(args.align_atoms, one_indexed=True)
+    # --- align-atoms: pass through as a selector string ---
+    # The full selector grammar applies — numeric ranges ("1,2-5"),
+    # element symbols ("Fe,P"), and categories ("M", "L", "het") are all
+    # resolved per-graph by xyzrender.selectors.resolve_atom_indices.
+    _align_atoms: list[int] | str | None = args.align_atoms
 
     _anchor_atoms: list[int] | None = None
     if args.anchor:
@@ -1257,6 +1413,8 @@ def main() -> None:
             mo_neg_color=args.mo_colors[1] if args.mo_colors else None,
             mo_blur=args.mo_blur,
             mo_upsample=args.mo_upsample,
+            mo_outline_width=args.mo_outline_width,
+            mo_outline_color=args.mo_outline_color,
             flat_mo=args.flat_mo,
             dens_color=args.dens_color,
             nci_mode=args.nci_mode,
@@ -1334,6 +1492,7 @@ def main() -> None:
                 output=gif_path,
                 gif_fps=args.gif_fps,
                 rot_frames=args.rot_frames,
+                vib_frames=args.vib_frames,
                 ts_frame=args.ts_frame,
                 overlay=args.overlay,
                 overlay_color=args.overlay_color,
@@ -1341,6 +1500,7 @@ def main() -> None:
                 auto_align=args.align,  # None = preset default; True/False = explicit override
                 opacity=args.opacity,
                 reference_graph=_ref_graph,
+                trj_bonds=args.trj_bonds,
                 detect_nci=args.nci_detect,
                 mo=args.mo,
                 dens=args.dens,
@@ -1349,6 +1509,8 @@ def main() -> None:
                 mo_neg_color=args.mo_colors[1] if args.mo_colors else None,
                 mo_blur=args.mo_blur,
                 mo_upsample=args.mo_upsample,
+                mo_outline_width=args.mo_outline_width,
+                mo_outline_color=args.mo_outline_color,
                 flat_mo=args.flat_mo,
                 dens_color=args.dens_color,
                 surface_style=args.surface_style,
