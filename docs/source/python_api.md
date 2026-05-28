@@ -72,9 +72,22 @@ render(mol, unbond=["M-L"], bond=["2-5"])     # hide M-L but keep bond 2-5
 render(mol, unbond=["sbm", "M-pi", "1-3"])    # multiple specs
 ```
 
-Available categories: `M` (all metals), `sbm` (s-block metals), `L` (non-metals),
-`het` (heteroatoms: not C, not H, not metal), `pi` (eta-coordination to aromatic rings).
-Any element symbol also works (`Fe`, `Li`, `O`, etc.).
+Available categories:
+
+* `M` — all metals
+* `sbm` — s-block metals (Li, Na, K, Rb, Cs + Be, Mg, Ca, Sr, Ba)
+* `L` — non-metals (or, when the graph has metals, atoms bonded to a metal)
+* `het` — heteroatoms (not C, not H, not metal)
+* `pi` — eta-coordination to aromatic rings
+* `hal` — halogens (F, Cl, Br, I, At)
+* `pnic` — pnictogens (N, P, As, Sb, Bi)
+* `chal` — chalcogens (O, S, Se, Te, Po)
+* `noble` — noble gases (He, Ne, Ar, Kr, Xe, Rn)
+* `triel` — group 13 (B, Al, Ga, In, Tl)
+* `tetrel` — group 14 (C, Si, Ge, Sn, Pb)
+
+Any element symbol also works (`Fe`, `Li`, `O`, etc.).  Tokens are
+case-insensitive (`hal` ≡ `HAL`).  Combine with commas (`"hal,chal"`).
 NCI and TS overlay edges are never removed by rules.
 
 ### Haptic centroid bonds

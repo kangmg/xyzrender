@@ -123,7 +123,7 @@ The `colors` key maps element symbols to hex values (`#D9D9D9`) or [CSS4 named c
 
 **TS / NCI / haptic styling.** `ts_dash` and `nci_dash` are `[length, gap]` arrays giving the dash/dot length and the empty-gap length, both as multiples of `bond_width`. `ts_width` and `nci_width` are the line stroke widths as multiples of `bond_width`. `ts_element` / `nci_element` opt in to atom-coloured split-halves on these bonds (the same gradient solid bonds use) and require `bond_color_by_element=true`; if `ts_color` / `nci_color` is set, that flat colour wins. Haptic dots follow the NCI controls. See [Transition States and NCI](examples/ts_nci.md) for a styling walkthrough.
 
-The `regions` key defines per-atom-group style overrides. Keys are atom selectors (`M` = metals, `Pt`, `sbm` = s-block metals, `het` = heteroatoms, or numeric `1-5`). Values are a preset name or an inline dict of overrides:
+The `regions` key defines per-atom-group style overrides. Keys are atom selectors — categories (`M` metals, `sbm` s-block metals, `het` heteroatoms, `hal` halogens, `pnic` pnictogens, `chal` chalcogens, `noble` noble gases, `triel` group 13, `tetrel` group 14), element symbols (`Pt`, `Fe`, …), numeric indices (`1-5`), or comma combinations (`"hal,chal"`). Values are a preset name or an inline dict of overrides:
 
 ```json
 "regions": {
@@ -250,4 +250,4 @@ If no `-o` is given, output defaults to `{input_basename}.svg`.
 | `--bond-by-element` / `--no-bond-by-element` | Color bonds by endpoint atom colors |
 | `--bond-gradient` / `--no-bond-gradient` | Cylinder shading on bonds (3D tube look) |
 | `--radius-scale ATOMS FACTOR` | Scale selected atoms (repeatable). Multiplies on top of `-a`. Selectors: `"1-5,M"` |
-| `--region ATOMS CONFIG` | Render atom subset with a different preset (repeatable). Selectors: `"1-5"`, `"M"`, `"Pt"`, `"sbm"`, `"het"` |
+| `--region ATOMS CONFIG` | Render atom subset with a different preset (repeatable). Selectors: indices `"1-5"`, elements `"Pt"`, categories `"M"` / `"sbm"` / `"het"` / `"hal"` / `"pnic"` / `"chal"` / `"noble"` / `"triel"` / `"tetrel"` |

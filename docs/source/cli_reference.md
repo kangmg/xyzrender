@@ -44,13 +44,13 @@ Full flag reference for `xyzrender`. See also `xyzrender --help`.
 | `--bo` / `--no-bo` | Bond order rendering toggle |
 | `--bond-by-element` / `--no-bond-by-element` | Color bonds by endpoint atom colors |
 | `--radius-scale ATOMS FACTOR` | Scale selected atoms (repeatable). Multiplies on top of `-a` |
-| `--region ATOMS CONFIG` | Render atom subset with a different style (repeatable). Selectors: `"1-5"`, `"Pt"`, `"M"` (metals), `"sbm"` (s-block), `"het"` (heteroatoms) |
+| `--region ATOMS CONFIG` | Render atom subset with a different style (repeatable). Selectors: indices `"1-5"`, elements `"Pt"`, categories (see below) |
 | `-Hls`, `--hue-shift-factor` | Hue gradient contrast (advanced; default per preset) |
 | `-hLs`, `--light-shift-factor` | Lightness gradient contrast (advanced) |
 | `-hlS`, `--saturation-shift-factor` | Saturation gradient contrast (advanced) |
 | `--skeletal-label-color` | Override all element label colours in `--config skeletal` |
 
-*— categories (`M-L`, `sbm`, `Fe-het`), pi-coordination (`M-pi`, `pi`), element (`Li`), atom index (`2`), or pair (`1-3`). Comma or space separated.
+*— categories (`M`, `sbm`, `L`, `het`, `hal`, `pnic`, `chal`, `noble`, `triel`, `tetrel`), pair specs (`M-L`, `Fe-het`, `M-hal`), pi-coordination (`M-pi`, `pi`), element (`Li`), atom index (`2`), or pair (`1-3`). Comma or space separated.
 
 ## Display
 
@@ -72,7 +72,7 @@ Full flag reference for `xyzrender`. See also `xyzrender --help`.
 | `--h-scale FLOAT` | H-atom radius scale (primary atoms; default: 0.6) |
 | `--vdw-h-scale FLOAT` | H-atom radius scale on the `--vdw` overlay (default: 0.7) |
 | `--mol-color COLOR` | Flat color for all atoms and bonds (overrides CPK). Highlight paints on top |
-| `--hl ATOMS [COLOR]` | Highlight atom group. Accepts the same selectors as `--only`/`--region` — indices/ranges (`"1-5,8"`), elements (`"C,N"`), or categories (`"M"`, `"het"`). Repeatable; auto-colours from palette if no colour given |
+| `--hl ATOMS [COLOR]` | Highlight atom group. Accepts the same selectors as `--only`/`--region` — indices/ranges (`"1-5,8"`), elements (`"C,N"`), or categories (`"M"`, `"het"`, `"hal"`, `"chal"`, `"pnic"`, …). Repeatable; auto-colours from palette if no colour given |
 | `--dof` | Depth-of-field blur (does not affect bonds/lines) |
 | `--dof-strength FLOAT` | DoF max blur strength (default: 3.0) |
 | `--glow ATOMS` | Add blurred glow under selected atoms (same selector grammar as `--hl` / `--vdw`) |
