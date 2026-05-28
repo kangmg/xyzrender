@@ -1456,10 +1456,12 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                     bond_geom[(ai_k, aj_k)] = bond_geom[(aj_k, ai_k)] = None
 
     _molecule_insert_idx = len(svg)
-    # With atom discs: outline before atom, fill after — disc masks the
-    # central join, outline is the halo along the bond body.  Without
-    # (atom_scale==0): all outlines go to one back-layer below the bonds.
-    _interleaved_bonds = cfg.atom_scale > 0
+
+    # With atom discs at both ends: outline before atom, fill after — disc
+    # masks the central join.  Without (atom_scale==0 at either end): the
+    # outline goes to one back-layer below the bonds, joint hidden by fills.
+    def _bond_interleaved(ai_b: int, aj_b: int) -> bool:
+        return _atom_scale_per[ai_b] > 0 and _atom_scale_per[aj_b] > 0
 
     # Interlocking primary atom spheres (--config vdw): pre-compute the
     # visibility polygon for each atom that 2D-overlaps a neighbour.  Atoms
@@ -1533,8 +1535,10 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             _outgoing_bonds.sort(key=lambda b: _z_rank[b[0]])
 
         # Phase 1 — outlines first; atom disc next will mask the central join.
-        if _interleaved_bonds and _outgoing_bonds:
+        if _outgoing_bonds:
             for aj_int, battrs, bond_op in _outgoing_bonds:
+                if not _bond_interleaved(ai, aj_int):
+                    continue
                 add_bond(
                     ai,
                     aj_int,
@@ -1686,8 +1690,8 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
 
         # Phase 2 — fills on top of the atom disc (stick-into-ball).  No
         # disc: phase="both" also emits the back-layer outline.
-        _fill_phase = "fill" if _interleaved_bonds else "both"
         for aj_int, battrs, bond_op in _outgoing_bonds:
+            _fill_phase = "fill" if _bond_interleaved(ai, aj_int) else "both"
             add_bond(
                 ai,
                 aj_int,
