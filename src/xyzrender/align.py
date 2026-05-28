@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from xyzgraph import DATA
 
+from xyzrender.selectors import _STATIC_CATEGORIES
 from xyzrender.utils import kabsch_rotation, pca_matrix
 
 if TYPE_CHECKING:
@@ -34,11 +35,37 @@ _MAX_ANCHOR_CANDIDATES = 1024
 # ---------------------------------------------------------------------------
 
 
+_GROUP_BUCKETS = ("hal", "pnic", "chal", "noble", "triel", "tetrel")
+
+
+def _group_key(symbol: str) -> str:
+    """Coarse chemical bucket for tiered geometric pairing.
+
+    Metals win over group membership (Sn → ``M``, not ``tetrel``).
+    """
+    if not symbol or symbol == "*":
+        return "*"
+    if symbol in _STATIC_CATEGORIES["M"]:
+        return "M"
+    if symbol in ("C", "H"):
+        return symbol
+    for cat in _GROUP_BUCKETS:
+        if symbol in _STATIC_CATEGORIES[cat]:
+            return cat
+    return "het"
+
+
 def _greedy_nn(
     ref_pos: np.ndarray,
     mob_pos: np.ndarray,
+    tiers: list[tuple[np.ndarray, np.ndarray]] | None = None,
 ) -> tuple[list[int], list[int], float]:
-    """Greedy nearest-neighbour pairing. Returns (ref_idx, mob_idx, rmsd)."""
+    """Greedy nearest-neighbour pairing. Returns (ref_idx, mob_idx, rmsd).
+
+    *tiers* is an ordered list of (ref_key, mob_key) arrays.  Pairs whose
+    keys match in tier 1 lock first; tier 2 fills remaining slots; a final
+    element-blind pass mops up leftovers.
+    """
     n_ref, n_mob = len(ref_pos), len(mob_pos)
     if n_ref == 0 or n_mob == 0:
         return [], [], float("inf")
@@ -47,15 +74,35 @@ def _greedy_nn(
     pr: list[int] = []
     pm: list[int] = []
     total_sq = 0.0
-    for _ in range(k):
-        flat = int(np.argmin(work))
-        i, j = flat // n_mob, flat % n_mob
-        pr.append(i)
-        pm.append(j)
-        total_sq += float(work[i, j]) ** 2
-        work[i, :] = np.inf
-        work[:, j] = np.inf
-    return pr, pm, float(np.sqrt(total_sq / k))
+
+    def _drain(eligible: np.ndarray) -> None:
+        nonlocal total_sq
+        while len(pr) < k:
+            flat = int(np.argmin(eligible))
+            d = eligible.flat[flat]
+            if not np.isfinite(d):
+                return
+            i, j = divmod(flat, n_mob)
+            pr.append(i)
+            pm.append(j)
+            total_sq += float(d) ** 2
+            eligible[i, :] = np.inf
+            eligible[:, j] = np.inf
+            work[i, :] = np.inf
+            work[:, j] = np.inf
+
+    for ref_key, mob_key in tiers or ():
+        if len(pr) == k:
+            break
+        same = ref_key[:, None] == mob_key[None, :]
+        _drain(np.where(same, work, np.inf))
+
+    if len(pr) < k:
+        _drain(work)
+
+    if not pr:
+        return [], [], float("inf")
+    return pr, pm, float(np.sqrt(total_sq / len(pr)))
 
 
 def kabsch_with_pivot(
@@ -86,19 +133,37 @@ def _icp(
     *,
     max_iter: int = 10,
     tol: float = 1e-6,
+    tiers: list[tuple[np.ndarray, np.ndarray]] | None = None,
+    ref_mass: np.ndarray | None = None,
+    mob_mass: np.ndarray | None = None,
 ) -> tuple[np.ndarray, float]:
-    """ICP: greedy-NN pair → Kabsch → repeat until RMSD converges."""
+    """ICP: greedy-NN pair → Kabsch (mass-weighted when masses given) → repeat.
+
+    *ref_mass* / *mob_mass* weight the rotation by atomic number so heavy
+    atoms pull harder; returned RMSD stays unweighted for seed selection.
+    """
     current = mob_pos.copy()
     last_rmsd = rmsd = float("inf")
     for _ in range(max_iter):
-        pr, pm, rmsd = _greedy_nn(ref_pos, current)
+        pr, pm, rmsd = _greedy_nn(ref_pos, current, tiers)
         if not pr:
             return current, rmsd
         sub_r = ref_pos[pr]
         sub_m = current[pm]
-        t_r = sub_r.mean(axis=0)
-        t_m = sub_m.mean(axis=0)
-        rot = kabsch_rotation(sub_m - t_m, sub_r - t_r)
+        if ref_mass is not None and mob_mass is not None:
+            w = (ref_mass[pr] + mob_mass[pm]) * 0.5
+            wn = w / w.sum()
+            t_r = (wn[:, None] * sub_r).sum(axis=0)
+            t_m = (wn[:, None] * sub_m).sum(axis=0)
+            sw = np.sqrt(w)[:, None]
+            h = ((sub_m - t_m) * sw).T @ ((sub_r - t_r) * sw)
+            u, _, vt = np.linalg.svd(h)
+            d = np.linalg.det(vt.T @ u.T)
+            rot = vt.T @ np.diag([1.0, 1.0, np.sign(d)]) @ u.T
+        else:
+            t_r = sub_r.mean(axis=0)
+            t_m = sub_m.mean(axis=0)
+            rot = kabsch_rotation(sub_m - t_m, sub_r - t_r)
         current = (current - t_m) @ rot.T + t_r
         if abs(last_rmsd - rmsd) < tol:
             break
@@ -107,9 +172,19 @@ def _icp(
 
 
 def best_fit_align(ref_graph: "nx.Graph", mob_graph: "nx.Graph") -> tuple[np.ndarray, float]:
-    """Spec-free best-fit: PCA-orient each graph, ICP from 4 sign-flip seeds."""
-    ref_pos = np.array([ref_graph.nodes[n]["position"] for n in ref_graph.nodes()], dtype=float)
-    mob_pos = np.array([mob_graph.nodes[n]["position"] for n in mob_graph.nodes()], dtype=float)
+    """Spec-free best-fit: PCA-orient each graph, mass-weighted tiered ICP from 4 sign-flip seeds."""
+    ref_nodes = list(ref_graph.nodes())
+    mob_nodes = list(mob_graph.nodes())
+    ref_pos = np.array([ref_graph.nodes[n]["position"] for n in ref_nodes], dtype=float)
+    mob_pos = np.array([mob_graph.nodes[n]["position"] for n in mob_nodes], dtype=float)
+    ref_sym = np.array([ref_graph.nodes[n].get("symbol", "") for n in ref_nodes])
+    mob_sym = np.array([mob_graph.nodes[n].get("symbol", "") for n in mob_nodes])
+    ref_grp = np.array([_group_key(s) for s in ref_sym])
+    mob_grp = np.array([_group_key(s) for s in mob_sym])
+    tiers = [(ref_sym, mob_sym), (ref_grp, mob_grp)]
+    # Atomic number as a mass proxy — only relative weights matter.
+    ref_mass = np.array([float(DATA.s2n.get(s, 1)) for s in ref_sym])
+    mob_mass = np.array([float(DATA.s2n.get(s, 1)) for s in mob_sym])
     ref_centroid = ref_pos.mean(axis=0)
     mob_centroid = mob_pos.mean(axis=0)
     r_pca = pca_matrix(ref_pos - ref_centroid)
@@ -122,7 +197,7 @@ def best_fit_align(ref_graph: "nx.Graph", mob_graph: "nx.Graph") -> tuple[np.nda
     for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
         sz = sx * sy  # det = +1
         seed = mp * np.array([sx, sy, sz], dtype=float)
-        aligned, rmsd = _icp(rp, seed)
+        aligned, rmsd = _icp(rp, seed, tiers=tiers, ref_mass=ref_mass, mob_mass=mob_mass)
         if rmsd < best_rmsd:
             best_rmsd = rmsd
             best_aligned = aligned
