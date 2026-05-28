@@ -18,17 +18,17 @@
   </defs>
   <circle cx="515.2" cy="446.5" r="25.3" fill="url(#x0g8)" stroke="#0e0e0e" stroke-width="4.7"/>
   <line x1="492.7" y1="443.9" x2="434.2" y2="437.0" stroke="#050505" stroke-width="11.8" stroke-linecap="round"/>
-  <line x1="524.5" y1="466.8" x2="550.5" y2="523.8" stroke="#030303" stroke-width="11.8" stroke-linecap="round"/>
   <line x1="527.5" y1="427.7" x2="560.8" y2="377.1" stroke="#040404" stroke-width="11.8" stroke-linecap="round"/>
+  <line x1="524.5" y1="466.8" x2="550.5" y2="523.8" stroke="#030303" stroke-width="11.8" stroke-linecap="round"/>
   <circle cx="527.7" cy="259.6" r="25.3" fill="url(#x0g11)" stroke="#070707" stroke-width="4.7"/>
-  <line x1="537.4" y1="280.1" x2="563.6" y2="335.4" stroke="#020202" stroke-width="11.8" stroke-linecap="round"/>
   <line x1="505.2" y1="256.8" x2="444.6" y2="249.4" stroke="#020202" stroke-width="11.8" stroke-linecap="round"/>
+  <line x1="537.4" y1="280.1" x2="563.6" y2="335.4" stroke="#020202" stroke-width="11.8" stroke-linecap="round"/>
   <line x1="541.2" y1="241.4" x2="579.3" y2="189.9" stroke="#020202" stroke-width="11.8" stroke-linecap="round"/>
   <circle cx="410.3" cy="434.2" r="26.8" fill="url(#x0g2)" stroke="#060606" stroke-width="4.7"/>
-  <line x1="393.4" y1="415.6" x2="368.8" y2="364.7" stroke="#020202" stroke-width="8.3" stroke-linecap="round" stroke-dasharray="8.3,16.6"/>
-  <line x1="406.2" y1="409.4" x2="381.6" y2="358.5" stroke="#020202" stroke-width="8.3" stroke-linecap="round"/>
   <line x1="398.4" y1="456.4" x2="358.2" y2="497.3" stroke="#030303" stroke-width="8.3" stroke-linecap="round"/>
   <line x1="388.3" y1="446.5" x2="348.0" y2="487.3" stroke="#030303" stroke-width="8.3" stroke-linecap="round" stroke-dasharray="8.3,16.6"/>
+  <line x1="393.4" y1="415.6" x2="368.8" y2="364.7" stroke="#020202" stroke-width="8.3" stroke-linecap="round" stroke-dasharray="8.3,16.6"/>
+  <line x1="406.2" y1="409.4" x2="381.6" y2="358.5" stroke="#020202" stroke-width="8.3" stroke-linecap="round"/>
   <circle cx="337.1" cy="508.5" r="25.3" fill="url(#x0g10)" stroke="#060606" stroke-width="4.7"/>
   <line x1="313.7" y1="504.4" x2="264.9" y2="479.3" stroke="#020202" stroke-width="8.3" stroke-linecap="round"/>
   <line x1="320.2" y1="491.8" x2="271.4" y2="466.7" stroke="#020202" stroke-width="8.3" stroke-linecap="round" stroke-dasharray="8.3,16.6"/>

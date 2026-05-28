@@ -7,8 +7,8 @@
     <radialGradient id="x0g8" cx=".5" cy=".5" fx=".33" fy=".33" r=".66"><stop offset="0%" stop-color="#ffffff"/><stop offset="40%" stop-color="#ffffff"/><stop offset="100%" stop-color="#9d7b81"/></radialGradient>
   </defs>
   <circle cx="570.3" cy="368.2" r="52.2" fill="url(#x0g2)" stroke="#000000" stroke-width="10.3"/>
-  <line x1="541.3" y1="331.3" x2="461.1" y2="228.9" stroke="#000000" stroke-width="25.6" stroke-linecap="round"/>
   <line x1="614.2" y1="351.7" x2="690.4" y2="323.0" stroke="#000000" stroke-width="25.6" stroke-linecap="round"/>
+  <line x1="541.3" y1="331.3" x2="461.1" y2="228.9" stroke="#000000" stroke-width="25.6" stroke-linecap="round"/>
   <line x1="319.4" y1="370.2" x2="384.1" y2="160.0" stroke="#b22222" stroke-width="15.4" stroke-linecap="round"/>
   <polygon points="400.0,108.5 403.7,166.0 364.6,154.0" fill="#b22222"/>
   <text x="411.8" y="91.8" font-size="61.5" fill="#b22222" font-family="Arial,sans-serif" text-anchor="middle" font-weight="bold">μ</text>

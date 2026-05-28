@@ -19,19 +19,19 @@
   <circle cx="558.9" cy="478.2" r="31.2" fill="url(#x0g8)" stroke="#0e0e0e" stroke-width="5.9"/>
   <text x="558.9" y="478.2" font-family="monospace" font-size="29.3px" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#222222">N9</text>
   <line x1="531.1" y1="475.0" x2="458.8" y2="466.5" stroke="#050505" stroke-width="14.6" stroke-linecap="round"/>
-  <line x1="570.4" y1="503.4" x2="602.5" y2="573.8" stroke="#030303" stroke-width="14.6" stroke-linecap="round"/>
   <line x1="574.2" y1="455.0" x2="615.4" y2="392.4" stroke="#040404" stroke-width="14.6" stroke-linecap="round"/>
+  <line x1="570.4" y1="503.4" x2="602.5" y2="573.8" stroke="#030303" stroke-width="14.6" stroke-linecap="round"/>
   <circle cx="574.4" cy="247.1" r="31.2" fill="url(#x0g11)" stroke="#070707" stroke-width="5.9"/>
   <text x="574.4" y="247.1" font-family="monospace" font-size="29.3px" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#222222">N12</text>
-  <line x1="586.4" y1="272.4" x2="618.8" y2="340.9" stroke="#020202" stroke-width="14.6" stroke-linecap="round"/>
   <line x1="546.5" y1="243.7" x2="471.6" y2="234.5" stroke="#020202" stroke-width="14.6" stroke-linecap="round"/>
+  <line x1="586.4" y1="272.4" x2="618.8" y2="340.9" stroke="#020202" stroke-width="14.6" stroke-linecap="round"/>
   <line x1="591.1" y1="224.5" x2="638.2" y2="160.9" stroke="#020202" stroke-width="14.6" stroke-linecap="round"/>
   <circle cx="429.3" cy="463.1" r="33.2" fill="url(#x0g2)" stroke="#060606" stroke-width="5.9"/>
   <text x="429.3" y="463.1" font-family="monospace" font-size="29.3px" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#222222">C3</text>
-  <line x1="408.4" y1="440.0" x2="377.9" y2="377.0" stroke="#020202" stroke-width="10.2" stroke-linecap="round" stroke-dasharray="10.2,20.5"/>
-  <line x1="424.2" y1="432.4" x2="393.7" y2="369.4" stroke="#020202" stroke-width="10.2" stroke-linecap="round"/>
   <line x1="414.6" y1="490.5" x2="364.8" y2="541.0" stroke="#030303" stroke-width="10.2" stroke-linecap="round"/>
   <line x1="402.1" y1="478.2" x2="352.3" y2="528.7" stroke="#030303" stroke-width="10.2" stroke-linecap="round" stroke-dasharray="10.2,20.5"/>
+  <line x1="408.4" y1="440.0" x2="377.9" y2="377.0" stroke="#020202" stroke-width="10.2" stroke-linecap="round" stroke-dasharray="10.2,20.5"/>
+  <line x1="424.2" y1="432.4" x2="393.7" y2="369.4" stroke="#020202" stroke-width="10.2" stroke-linecap="round"/>
   <circle cx="338.8" cy="554.9" r="31.2" fill="url(#x0g10)" stroke="#060606" stroke-width="5.9"/>
   <text x="338.8" y="554.9" font-family="monospace" font-size="29.3px" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#222222">N11</text>
   <line x1="309.8" y1="549.8" x2="249.4" y2="518.8" stroke="#020202" stroke-width="10.2" stroke-linecap="round"/>

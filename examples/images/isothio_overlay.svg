@@ -115,15 +115,15 @@
   <circle cx="486.7" cy="332.7" r="11.3" fill="url(#x0g45)" stroke="#b2b2b2" stroke-width="3.8"/>
   <line x1="492.3" y1="334.4" x2="511.5" y2="340.2" stroke="#7e7e7e" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="598.1" cy="376.8" r="21.4" fill="url(#x0g70)" stroke="#b2b2b2" stroke-width="3.8"/>
-  <line x1="609.9" y1="373.8" x2="634.1" y2="379.6" stroke="#ae80b9" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
-  <line x1="607.3" y1="384.8" x2="631.5" y2="390.6" stroke="#ae80b9" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="578.2" y1="374.5" x2="537.5" y2="357.2" stroke="#b88fc1" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="582.6" y1="364.1" x2="541.9" y2="346.8" stroke="#b88fc1" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
+  <line x1="609.9" y1="373.8" x2="634.1" y2="379.6" stroke="#ae80b9" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
+  <line x1="607.3" y1="384.8" x2="631.5" y2="390.6" stroke="#ae80b9" stroke-width="6.6" stroke-linecap="round"/>
   <circle cx="597.8" cy="375.7" r="21.4" fill="url(#x0g18)" stroke="#b2b2b2" stroke-width="3.8"/>
-  <line x1="609.8" y1="373.1" x2="634.1" y2="379.5" stroke="#5a5a5a" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
-  <line x1="606.9" y1="384.0" x2="631.2" y2="390.5" stroke="#5a5a5a" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="578.0" y1="373.4" x2="537.5" y2="356.2" stroke="#6d6d6d" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="582.4" y1="363.0" x2="541.9" y2="345.8" stroke="#6d6d6d" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
+  <line x1="609.8" y1="373.1" x2="634.1" y2="379.5" stroke="#5a5a5a" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
+  <line x1="606.9" y1="384.0" x2="631.2" y2="390.5" stroke="#5a5a5a" stroke-width="6.6" stroke-linecap="round"/>
   <circle cx="522.1" cy="344.5" r="21.4" fill="url(#x0g71)" stroke="#b2b2b2" stroke-width="3.8"/>
   <line x1="511.7" y1="344.3" x2="495.0" y2="333.2" stroke="#ab7cb7" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="518.0" y1="334.9" x2="501.3" y2="323.8" stroke="#ab7cb7" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
@@ -141,13 +141,13 @@
   <line x1="632.9" y1="387.4" x2="616.2" y2="376.2" stroke="#9b62a8" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <line x1="639.2" y1="378.0" x2="622.6" y2="366.8" stroke="#9b62a8" stroke-width="6.6" stroke-linecap="round"/>
   <circle cx="491.0" cy="323.6" r="21.4" fill="url(#x0g72)" stroke="#727272" stroke-width="3.8"/>
+  <line x1="473.5" y1="315.7" x2="441.3" y2="301.1" stroke="#a16cae" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="502.7" y1="320.9" x2="526.6" y2="327.2" stroke="#995fa7" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="499.8" y1="331.8" x2="523.7" y2="338.1" stroke="#995fa7" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
-  <line x1="473.5" y1="315.7" x2="441.3" y2="301.1" stroke="#a16cae" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="491.2" cy="324.2" r="21.4" fill="url(#x0g20)" stroke="#717171" stroke-width="3.8"/>
+  <line x1="473.8" y1="316.1" x2="441.9" y2="301.3" stroke="#3f3f3f" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="503.2" y1="321.9" x2="527.0" y2="329.1" stroke="#2f2f2f" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="499.9" y1="332.7" x2="523.7" y2="340.0" stroke="#2f2f2f" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
-  <line x1="473.8" y1="316.1" x2="441.9" y2="301.3" stroke="#3f3f3f" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="432.0" cy="296.9" r="11.3" fill="url(#x0g98)" stroke="#707070" stroke-width="3.8"/>
   <circle cx="432.7" cy="297.1" r="11.3" fill="url(#x0g46)" stroke="#6e6e6e" stroke-width="3.8"/>
   <circle cx="612.4" cy="368.5" r="21.4" fill="url(#x0g16)" stroke="#404040" stroke-width="3.8"/>
@@ -179,18 +179,18 @@
   <circle cx="528.1" cy="488.7" r="11.3" fill="url(#x0g40)" stroke="#2c2c2c" stroke-width="3.8"/>
   <line x1="521.3" y1="492.5" x2="497.6" y2="506.0" stroke="#121212" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="105.0" cy="215.7" r="21.4" fill="url(#x0g54)" stroke="#2a2a2a" stroke-width="3.8"/>
-  <line x1="115.8" y1="198.9" x2="148.9" y2="170.3" stroke="#8c4b9c" stroke-width="6.6" stroke-linecap="round"/>
-  <line x1="123.2" y1="207.5" x2="156.3" y2="178.9" stroke="#8c4b9c" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <line x1="113.8" y1="233.7" x2="121.3" y2="278.0" stroke="#8d4d9c" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <line x1="102.7" y1="235.6" x2="110.1" y2="279.9" stroke="#8d4d9c" stroke-width="6.6" stroke-linecap="round"/>
+  <line x1="115.8" y1="198.9" x2="148.9" y2="170.3" stroke="#8c4b9c" stroke-width="6.6" stroke-linecap="round"/>
+  <line x1="123.2" y1="207.5" x2="156.3" y2="178.9" stroke="#8c4b9c" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <circle cx="118.9" cy="297.9" r="21.4" fill="url(#x0g55)" stroke="#292929" stroke-width="3.8"/>
   <line x1="138.7" y1="299.8" x2="179.2" y2="316.2" stroke="#8c4b9c" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <line x1="134.5" y1="310.3" x2="175.0" y2="326.7" stroke="#8c4b9c" stroke-width="6.6" stroke-linecap="round"/>
   <circle cx="107.5" cy="211.6" r="21.4" fill="url(#x0g2)" stroke="#292929" stroke-width="3.8"/>
-  <line x1="118.8" y1="195.2" x2="152.6" y2="167.6" stroke="#151515" stroke-width="6.6" stroke-linecap="round"/>
-  <line x1="125.9" y1="204.0" x2="159.7" y2="176.4" stroke="#151515" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <line x1="115.8" y1="229.9" x2="122.1" y2="274.2" stroke="#171717" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <line x1="104.6" y1="231.5" x2="110.9" y2="275.7" stroke="#171717" stroke-width="6.6" stroke-linecap="round"/>
+  <line x1="118.8" y1="195.2" x2="152.6" y2="167.6" stroke="#151515" stroke-width="6.6" stroke-linecap="round"/>
+  <line x1="125.9" y1="204.0" x2="159.7" y2="176.4" stroke="#151515" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <circle cx="119.2" cy="294.0" r="21.4" fill="url(#x0g3)" stroke="#292929" stroke-width="3.8"/>
   <line x1="138.9" y1="296.5" x2="178.9" y2="313.9" stroke="#151515" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <line x1="134.4" y1="306.8" x2="174.4" y2="324.2" stroke="#151515" stroke-width="6.6" stroke-linecap="round"/>
@@ -255,11 +255,11 @@
   <line x1="351.9" y1="156.8" x2="381.4" y2="211.9" stroke="#0d0d0d" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="342.0" y1="162.1" x2="371.4" y2="217.2" stroke="#0d0d0d" stroke-width="6.6" stroke-linecap="round" stroke-dasharray="6.6,13.2"/>
   <circle cx="481.6" cy="513.5" r="21.4" fill="url(#x0g66)" stroke="#181818" stroke-width="3.8"/>
-  <line x1="480.0" y1="501.7" x2="475.4" y2="469.4" stroke="#853f95" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="486.2" y1="531.1" x2="494.7" y2="563.8" stroke="#874397" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="480.0" y1="501.7" x2="475.4" y2="469.4" stroke="#853f95" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="484.7" cy="513.4" r="21.4" fill="url(#x0g14)" stroke="#171717" stroke-width="3.8"/>
-  <line x1="482.2" y1="502.1" x2="475.3" y2="471.2" stroke="#060606" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="491.1" y1="530.5" x2="503.0" y2="562.2" stroke="#0b0b0b" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="482.2" y1="502.1" x2="475.3" y2="471.2" stroke="#060606" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="624.6" cy="223.4" r="11.3" fill="url(#x0g47)" stroke="#171717" stroke-width="3.8"/>
   <line x1="619.9" y1="214.6" x2="603.6" y2="184.3" stroke="#0b0b0b" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="625.6" cy="224.4" r="11.3" fill="url(#x0g99)" stroke="#161616" stroke-width="3.8"/>
@@ -267,13 +267,13 @@
   <circle cx="385.5" cy="231.5" r="21.4" fill="url(#x0g7)" stroke="#161616" stroke-width="3.8"/>
   <line x1="404.6" y1="232.9" x2="447.5" y2="236.1" stroke="#0b0b0b" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="367.1" cy="375.6" r="21.4" fill="url(#x0g11)" stroke="#161616" stroke-width="3.8"/>
-  <line x1="383.2" y1="375.4" x2="427.1" y2="374.8" stroke="#070707" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="353.6" y1="386.3" x2="328.6" y2="406.3" stroke="#090909" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="383.2" y1="375.4" x2="427.1" y2="374.8" stroke="#070707" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="383.9" cy="227.9" r="21.4" fill="url(#x0g59)" stroke="#161616" stroke-width="3.8"/>
   <line x1="403.0" y1="229.3" x2="446.1" y2="232.6" stroke="#874397" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="367.0" cy="374.0" r="21.4" fill="url(#x0g63)" stroke="#151515" stroke-width="3.8"/>
-  <line x1="383.4" y1="373.7" x2="427.4" y2="372.8" stroke="#854096" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="353.6" y1="384.1" x2="328.7" y2="402.9" stroke="#864196" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="383.4" y1="373.7" x2="427.4" y2="372.8" stroke="#854096" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="752.1" cy="152.1" r="11.3" fill="url(#x0g50)" stroke="#141414" stroke-width="3.8"/>
   <line x1="747.7" y1="143.1" x2="732.4" y2="111.5" stroke="#0a0a0a" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="755.0" cy="155.9" r="11.3" fill="url(#x0g102)" stroke="#131313" stroke-width="3.8"/>
@@ -289,19 +289,19 @@
   <line x1="493.1" y1="151.8" x2="473.7" y2="121.1" stroke="#0a0a0a" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="502.6" y1="145.8" x2="483.2" y2="115.1" stroke="#0a0a0a" stroke-width="6.6" stroke-linecap="round"/>
   <circle cx="464.1" cy="234.0" r="20.1" fill="url(#x0g60)" stroke="#121212" stroke-width="3.8"/>
-  <line x1="473.7" y1="218.6" x2="499.0" y2="178.3" stroke="#864297" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="472.0" y1="250.2" x2="494.7" y2="296.6" stroke="#874297" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="473.7" y1="218.6" x2="499.0" y2="178.3" stroke="#864297" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="469.2" cy="103.5" r="19.2" fill="url(#x0g22)" stroke="#121212" stroke-width="3.8"/>
   <circle cx="596.7" cy="168.0" r="21.4" fill="url(#x0g75)" stroke="#121212" stroke-width="3.8"/>
   <line x1="577.5" y1="166.7" x2="528.5" y2="163.3" stroke="#864297" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="602.3" y1="148.9" x2="624.5" y2="114.5" stroke="#864296" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="611.8" y1="155.0" x2="634.0" y2="120.7" stroke="#864296" stroke-width="6.6" stroke-linecap="round"/>
   <circle cx="503.1" cy="313.9" r="21.4" fill="url(#x0g61)" stroke="#121212" stroke-width="3.8"/>
-  <line x1="517.9" y1="312.3" x2="545.2" y2="309.3" stroke="#853f95" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="490.7" y1="326.2" x2="456.2" y2="360.2" stroke="#854095" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="517.9" y1="312.3" x2="545.2" y2="309.3" stroke="#853f95" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="503.8" cy="316.4" r="21.4" fill="url(#x0g9)" stroke="#111111" stroke-width="3.8"/>
-  <line x1="518.5" y1="314.9" x2="546.1" y2="312.2" stroke="#060606" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="491.1" y1="328.5" x2="455.8" y2="362.4" stroke="#060606" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="518.5" y1="314.9" x2="546.1" y2="312.2" stroke="#060606" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="509.3" cy="162.0" r="21.4" fill="url(#x0g73)" stroke="#111111" stroke-width="3.8"/>
   <line x1="494.7" y1="148.2" x2="476.7" y2="117.3" stroke="#864297" stroke-width="6.6" stroke-linecap="round"/>
   <line x1="504.5" y1="142.5" x2="486.5" y2="111.6" stroke="#864297" stroke-width="6.6" stroke-linecap="round"/>
@@ -323,19 +323,19 @@
   <circle cx="607.7" cy="46.1" r="11.3" fill="url(#x0g100)" stroke="#0b0b0b" stroke-width="3.8"/>
   <circle cx="321.6" cy="408.2" r="11.3" fill="url(#x0g86)" stroke="#0a0a0a" stroke-width="3.8"/>
   <circle cx="443.8" cy="372.5" r="21.4" fill="url(#x0g62)" stroke="#060606" stroke-width="3.8"/>
-  <line x1="439.6" y1="364.7" x2="431.7" y2="350.1" stroke="#823b93" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="450.1" y1="390.3" x2="467.5" y2="439.9" stroke="#833d94" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="439.6" y1="364.7" x2="431.7" y2="350.1" stroke="#823b93" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="443.2" cy="374.5" r="21.4" fill="url(#x0g10)" stroke="#060606" stroke-width="3.8"/>
-  <line x1="438.7" y1="366.7" x2="430.2" y2="351.8" stroke="#000000" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="449.4" y1="392.3" x2="466.7" y2="442.1" stroke="#020202" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="438.7" y1="366.7" x2="430.2" y2="351.8" stroke="#000000" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="552.9" cy="308.4" r="11.3" fill="url(#x0g83)" stroke="#060606" stroke-width="3.8"/>
   <circle cx="553.8" cy="311.5" r="11.3" fill="url(#x0g31)" stroke="#050505" stroke-width="3.8"/>
   <circle cx="473.7" cy="457.7" r="21.4" fill="url(#x0g64)" stroke="#030303" stroke-width="3.8"/>
-  <line x1="489.8" y1="457.4" x2="533.9" y2="456.6" stroke="#823b93" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="459.9" y1="465.0" x2="434.0" y2="478.8" stroke="#823b93" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="489.8" y1="457.4" x2="533.9" y2="456.6" stroke="#823b93" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="472.8" cy="459.9" r="21.4" fill="url(#x0g12)" stroke="#030303" stroke-width="3.8"/>
-  <line x1="488.8" y1="459.6" x2="532.5" y2="458.7" stroke="#000000" stroke-width="9.4" stroke-linecap="round"/>
   <line x1="458.9" y1="467.8" x2="432.8" y2="482.6" stroke="#000000" stroke-width="9.4" stroke-linecap="round"/>
+  <line x1="488.8" y1="459.6" x2="532.5" y2="458.7" stroke="#000000" stroke-width="9.4" stroke-linecap="round"/>
   <circle cx="745.7" cy="69.6" r="11.3" fill="url(#x0g49)" stroke="#020202" stroke-width="3.8"/>
   <circle cx="751.8" cy="73.0" r="11.3" fill="url(#x0g101)" stroke="#020202" stroke-width="3.8"/>
   <circle cx="601.8" cy="438.4" r="11.3" fill="url(#x0g88)" stroke="#010101" stroke-width="3.8"/>

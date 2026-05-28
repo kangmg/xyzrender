@@ -128,11 +128,11 @@
   <circle cx="198.9" cy="557.4" r="15.0" fill="url(#x0g114)" stroke="#b2b2b2" stroke-width="2.8" opacity="0.50"/>
   <line x1="187.1" y1="561.1" x2="155.8" y2="570.9" stroke="#575757" stroke-width="7.0" stroke-linecap="round" opacity="0.50"/>
   <circle cx="290.3" cy="185.8" r="15.0" fill="url(#x0g37)" stroke="#ababab" stroke-width="2.8"/>
-  <line x1="280.9" y1="194.8" x2="258.2" y2="216.6" stroke="#575757" stroke-width="7.0" stroke-linecap="round"/>
   <line x1="287.9" y1="172.7" x2="281.1" y2="135.1" stroke="#595959" stroke-width="7.0" stroke-linecap="round"/>
+  <line x1="280.9" y1="194.8" x2="258.2" y2="216.6" stroke="#575757" stroke-width="7.0" stroke-linecap="round"/>
   <circle cx="619.6" cy="225.8" r="15.0" fill="url(#x0g38)" stroke="#ababab" stroke-width="2.8"/>
-  <line x1="610.2" y1="216.7" x2="587.5" y2="195.0" stroke="#575757" stroke-width="7.0" stroke-linecap="round"/>
   <line x1="617.2" y1="238.9" x2="610.4" y2="276.4" stroke="#595959" stroke-width="7.0" stroke-linecap="round"/>
+  <line x1="610.2" y1="216.7" x2="587.5" y2="195.0" stroke="#575757" stroke-width="7.0" stroke-linecap="round"/>
   <circle cx="593.4" cy="125.2" r="15.0" fill="url(#x0g34)" stroke="#a7a7a7" stroke-width="2.8"/>
   <line x1="590.0" y1="137.9" x2="581.0" y2="171.8" stroke="#565656" stroke-width="7.0" stroke-linecap="round"/>
   <line x1="583.7" y1="116.4" x2="555.9" y2="91.2" stroke="#535353" stroke-width="7.0" stroke-linecap="round"/>
@@ -146,11 +146,11 @@
   <circle cx="577.4" cy="185.3" r="15.9" fill="url(#x0g2)" stroke="#8b8b8b" stroke-width="2.8"/>
   <line x1="565.1" y1="188.8" x2="542.7" y2="195.2" stroke="#414141" stroke-width="7.0" stroke-linecap="round"/>
   <circle cx="173.8" cy="678.2" r="15.9" fill="url(#x0g12)" stroke="#858585" stroke-width="2.8"/>
-  <line x1="164.3" y1="668.0" x2="140.7" y2="642.7" stroke="#434343" stroke-width="7.0" stroke-linecap="round"/>
   <line x1="171.9" y1="692.3" x2="168.0" y2="720.5" stroke="#464646" stroke-width="7.0" stroke-linecap="round"/>
+  <line x1="164.3" y1="668.0" x2="140.7" y2="642.7" stroke="#434343" stroke-width="7.0" stroke-linecap="round"/>
   <circle cx="503.1" cy="476.5" r="15.9" fill="url(#x0g15)" stroke="#858585" stroke-width="2.8"/>
-  <line x1="493.6" y1="486.8" x2="470.0" y2="512.0" stroke="#434343" stroke-width="7.0" stroke-linecap="round"/>
   <line x1="501.2" y1="462.4" x2="497.3" y2="434.2" stroke="#464646" stroke-width="7.0" stroke-linecap="round"/>
+  <line x1="493.6" y1="486.8" x2="470.0" y2="512.0" stroke="#434343" stroke-width="7.0" stroke-linecap="round"/>
   <circle cx="216.3" cy="329.7" r="15.9" fill="url(#x0g21)" stroke="#838383" stroke-width="2.8"/>
   <circle cx="545.6" cy="81.8" r="15.9" fill="url(#x0g22)" stroke="#838383" stroke-width="2.8"/>
   <circle cx="472.5" cy="579.8" r="15.9" fill="url(#x0g7)" stroke="#808080" stroke-width="2.8"/>
@@ -244,11 +244,11 @@
   <circle cx="293.9" cy="306.6" r="15.9" fill="url(#x0g13)" stroke="#000000" stroke-width="2.8"/>
   <line x1="281.7" y1="301.8" x2="254.0" y2="290.9" stroke="#000000" stroke-width="7.0" stroke-linecap="round" opacity="0.50"/>
   <circle cx="548.9" cy="556.9" r="15.9" fill="url(#x0g3)" stroke="#000000" stroke-width="2.8"/>
-  <line x1="538.8" y1="566.5" x2="516.1" y2="588.3" stroke="#000000" stroke-width="7.0" stroke-linecap="round"/>
   <line x1="545.3" y1="543.3" x2="536.3" y2="509.5" stroke="#000000" stroke-width="7.0" stroke-linecap="round"/>
+  <line x1="538.8" y1="566.5" x2="516.1" y2="588.3" stroke="#000000" stroke-width="7.0" stroke-linecap="round"/>
   <circle cx="219.6" cy="597.8" r="15.9" fill="url(#x0g0)" stroke="#000000" stroke-width="2.8"/>
-  <line x1="209.5" y1="588.2" x2="186.8" y2="566.4" stroke="#000000" stroke-width="7.0" stroke-linecap="round"/>
   <line x1="216.0" y1="611.4" x2="207.0" y2="645.2" stroke="#000000" stroke-width="7.0" stroke-linecap="round"/>
+  <line x1="209.5" y1="588.2" x2="186.8" y2="566.4" stroke="#000000" stroke-width="7.0" stroke-linecap="round"/>
   <circle cx="518.5" cy="661.9" r="15.9" fill="url(#x0g27)" stroke="#000000" stroke-width="2.8"/>
   <line x1="515.9" y1="648.0" x2="509.1" y2="610.4" stroke="#000000" stroke-width="7.0" stroke-linecap="round"/>
   <circle cx="189.2" cy="492.8" r="15.9" fill="url(#x0g24)" stroke="#000000" stroke-width="2.8"/>
