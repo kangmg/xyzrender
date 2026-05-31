@@ -405,19 +405,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 continue
             modal = Counter(graph.nodes[m]["symbol"] for m in members).most_common(1)[0][0]
             _endpoint_color[ai] = get_color(DATA.s2n.get(modal, 0), cfg.color_overrides)
-    # Match the darker side of the solid-bond cylinder gradient.
-    if cfg.bond_gradient:
-        _bond_endpoint_hex = [
-            c.darken(
-                strength=cfg.bond_gradient_strength,
-                hue_shift_factor=cfg.hue_shift_factor,
-                light_shift_factor=cfg.light_shift_factor,
-                saturation_shift_factor=cfg.saturation_shift_factor,
-            ).hex
-            for c in _endpoint_color
-        ]
-    else:
-        _bond_endpoint_hex = [c.hex for c in _endpoint_color]
+    _bond_endpoint_hex = [c.hex for c in _endpoint_color]
 
     # Bond lookup: per-edge attrs needed by the render loop.
     bonds: dict[tuple[int, int], _BondAttrs] = {}
