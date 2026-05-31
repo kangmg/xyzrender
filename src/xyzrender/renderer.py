@@ -390,7 +390,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
     _color_hex = [c.hex for c in colors]
 
     # Centroids use their members' modal-element colour for the by_element split.
-    _endpoint_color = list(colors)
+    _bond_endpoint_hex = list(_color_hex)
     centroid_sites: dict[int, tuple[int, ...]] = {
         **graph.graph.get("nci_centroid_sites", {}),
         **graph.graph.get("haptic_centroid_sites", {}),
@@ -404,8 +404,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             if ai is None or not members:
                 continue
             modal = Counter(graph.nodes[m]["symbol"] for m in members).most_common(1)[0][0]
-            _endpoint_color[ai] = get_color(DATA.s2n.get(modal, 0), cfg.color_overrides)
-    _bond_endpoint_hex = [c.hex for c in _endpoint_color]
+            _bond_endpoint_hex[ai] = get_color(DATA.s2n.get(modal, 0), cfg.color_overrides).hex
 
     # Bond lookup: per-edge attrs needed by the render loop.
     bonds: dict[tuple[int, int], _BondAttrs] = {}
