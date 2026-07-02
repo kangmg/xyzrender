@@ -1,6 +1,6 @@
 # Python API Guide
 
-xyzrender has a full Python API. All CLI flags are available as keyword arguments. Results display inline in Jupyter automatically.
+xyzrender has a full Python API. Every CLI flag has a keyword-argument equivalent, split across two calls: **`load()`** takes the input-parsing options, and **`render()`** / **`render_gif()`** take the drawing options. Results display inline in Jupyter automatically.
 
 See also the [auto-generated API reference](api/core.rst) for docstrings and type signatures, and the runnable [`examples/examples.ipynb`](https://github.com/aligfellow/xyzrender/blob/main/examples/examples.ipynb) notebook.
 
@@ -20,6 +20,25 @@ render(mol, output="caffeine.png")   # save as PNG
 render("caffeine.xyz")
 ```
 
+### Load-time vs render-time options
+
+The CLI runs everything in one command, but the Python API separates **parsing** from **drawing**:
+
+* **`load()` options** change how the file is *parsed* and must be passed to `load()`:
+  `smiles`, `charge`, `multiplicity`, `kekule`, `rebuild`, `mol_frame`, `bohr`, `quick`,
+  `ts_detect` (`--ts`), `ts_frame`, `nci_detect` (`--nci-detect`), `cell` (`--cell`),
+  and all `ensemble*` options (`--ensemble`, `--ensemble-color`, `--align-atoms`, `--max-frames`, …).
+* **`render()` / `render_gif()` options** change how the parsed molecule is *drawn* — everything else
+  (styling, bond rules, surfaces, overlays, hulls, annotations, output).
+
+Passing a path directly to `render("mol.xyz", …)` is shorthand for `render(load("mol.xyz"), …)` **with default
+loading** — so it only accepts render-time options. If you need any load-time option, call `load()` first:
+
+```python
+mol = load("ts.out", charge=1, ts_detect=True)   # load-time options here
+render(mol, mo=True, background="black")          # render-time options here
+```
+
 ### Loading options
 
 Use `load()` keyword arguments for non-default loading behaviour:
@@ -36,7 +55,7 @@ mol = load("mol.xyz", quick=True)               # skip BO detection (faster, use
 
 ## Render options
 
-All CLI flags are available as keyword arguments to `render()`:
+Render-time CLI flags are available as keyword arguments to `render()`:
 
 ### Styling
 

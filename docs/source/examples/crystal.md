@@ -1,6 +1,6 @@
 # Crystal Structures
 
-> **Python.** All `xyzrender` flags below map 1:1 to keyword arguments on `render()`. Worth flagging: `--supercell M N L` → `supercell=(2, 2, 1)` (tuple), `--axis HKL` → `axis="111"` (string), and extXYZ cell loading is `mol = load("foo.xyz", cell=True)` (auto-detected for VASP/QE/PDB-CRYST1/CIF/extXYZ inputs).
+> **Python.** Most `xyzrender` flags below map 1:1 to keyword arguments on `render()`. Cell reading is a **`load()`** option: `mol = load("foo.xyz", cell=True)` (auto-detected for VASP/QE/PDB-CRYST1/CIF/extXYZ inputs). The rendering flags are then `render()` kwargs — worth flagging: `--supercell M N L` → `supercell=(2, 2, 1)` (tuple) and `--axis HKL` → `axis="111"` (string).
 >
 > ```python
 > from xyzrender import load, render
