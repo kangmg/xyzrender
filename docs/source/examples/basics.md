@@ -1,6 +1,6 @@
 # Basics
 
-> **Python.** All `xyzrender` flags below map 1:1 to keyword arguments on `render()` (`--config flat` → `config="flat"`, `--hy` → `hy=True`, `--vdw "1-6"` → `vdw=[1, 2, 3, 4, 5, 6]` or `vdw="1-6"`). Most snippets on this page are CLI; equivalent Python is shown where the call shape adds something (lists for selections, kwargs for DoF/glow strength). See the [Python API guide](../python_api.md).
+> **Python.** Most `xyzrender` flags below map 1:1 to keyword arguments on `render()` (`--config flat` → `config="flat"`, `--hy` → `hy=True`, `--vdw "1-6"` → `vdw=[1, 2, 3, 4, 5, 6]` or `vdw="1-6"`). Input/parsing options (e.g. `--charge`, `--smiles`) go to `load()` instead. Most snippets on this page are CLI; equivalent Python is shown where the call shape adds something (lists for selections, kwargs for DoF/glow strength). See the [Python API guide](../python_api.md).
 
 ## Presets
 

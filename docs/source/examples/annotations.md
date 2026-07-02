@@ -1,14 +1,15 @@
 # Annotations & measurements
 
-> **Python.** All `xyzrender` flags below map 1:1 to keyword arguments on `render()` (`--foo bar` → `foo="bar"`). A few have shapes worth flagging:
+> **Python.** Most `xyzrender` flags below map 1:1 to keyword arguments on `render()` (`--foo bar` → `foo="bar"`). A few have shapes worth flagging:
 >
 > - `-l TOKEN ...` (repeatable) → `labels=["1 2 d", "1 2 3 a", ...]` — each spec is one string
 > - `--label FILE` → `label_file="annot.txt"`
 > - `--stereo` / `--stereo point,ez` → `stereo=True` or `stereo=["point", "ez"]`
 > - `--vector FILE` → `vector="dip.json"` (path) **or** `vector=[{...}, {...}]` (list of dicts inline)
+> - `--ts` is a **load-time** option, not a `render()` kwarg: load first with `mol = load("sn2.out", ts_detect=True)`, then `render(mol, ...)`
 > - `--measure` is a **separate top-level function**, not a `render()` kwarg: `from xyzrender import measure; measure(mol)` returns the data as a dict (atom indices 0-based on output, see [Geometry measurements](../python_api.md#geometry-measurements))
 >
-> See the [Python API guide](../python_api.md) for the full surface.
+> See the [Python API guide](../python_api.md) for the full surface and the load/render split.
 
 ## Atom indices
 
@@ -72,7 +73,8 @@ xyzrender sn2.out --ts --label sn2_label.txt --label-size 40
 ```
 
 ```python
-render("sn2.out", ts_detect=True, label_file="sn2_label.txt", label_font_size=40)
+mol = load("sn2.out", ts_detect=True)
+render(mol, label_file="sn2_label.txt", label_font_size=40)
 ```
 
 ## Stereochemistry (`--stereo`)

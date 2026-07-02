@@ -2,7 +2,7 @@
 
 Color atoms by a per-atom scalar value (e.g. partial charges, NMR shifts, Fukui indices) using a colormap palette.
 
-> **Python.** All `xyzrender` flags below map 1:1 to keyword arguments on `render()`. Two shapes differ from the CLI:
+> **Python.** Most `xyzrender` flags below map 1:1 to keyword arguments on `render()`. Two shapes differ from the CLI:
 >
 > - `--cmap FILE` → either `cmap="charges.txt"` (path) **or** `cmap={1: 0.5, 2: -0.3}` (1-indexed dict, no file needed)
 > - `--cmap-range VMIN VMAX` → `cmap_range=(-0.5, 0.5)` (tuple)

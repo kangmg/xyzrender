@@ -11,17 +11,17 @@ xyzrender triphenylbenzol.xyz --ensemble -o triphenylbenzol_ensemble.svg
 xyzrender triphenylbenzol.xyz --ensemble --align-atoms 21,22,23 --ensemble-color viridis --opacity 0.4 -o triphenylbenzol_ensemble_custom.svg
 ```
 
-From Python:
+From Python, the ensemble options are passed to `load()`, which builds the multi-conformer `Molecule`; `render()` then draws it:
 
 ```python
-from xyzrender import render
+from xyzrender import load, render
 
-render("triphenylbenzol.xyz", ensemble=True)                                          # CPK colours
-render("triphenylbenzol.xyz", ensemble=True, ensemble_color="spectral")               # spectral palette
-render("triphenylbenzol.xyz", ensemble=True, ensemble_color="#FF0000")                # single colour
-render("triphenylbenzol.xyz", ensemble=True, ensemble_color="viridis", opacity=0.4)   # faded palette
-render("triphenylbenzol.xyz", ensemble=True, align_atoms=[21, 22, 23])               # align on subset
-render("triphenylbenzol.xyz", ensemble=True, max_frames=10)                          # limit frames
+render(load("triphenylbenzol.xyz", ensemble=True))                                          # CPK colours
+render(load("triphenylbenzol.xyz", ensemble=True, ensemble_color="spectral"))               # spectral palette
+render(load("triphenylbenzol.xyz", ensemble=True, ensemble_color="#FF0000"))                # single colour
+render(load("triphenylbenzol.xyz", ensemble=True, ensemble_color="viridis"), opacity=0.4)   # faded palette
+render(load("triphenylbenzol.xyz", ensemble=True, align_atoms=[21, 22, 23]))                # align on subset
+render(load("triphenylbenzol.xyz", ensemble=True, max_frames=10))                           # limit frames
 ```
 
 ## Alignment subset
